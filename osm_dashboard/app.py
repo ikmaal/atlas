@@ -2908,6 +2908,17 @@ Could you provide more details about what you'd like to know?"""
 
 
 if __name__ == '__main__':
-    print("Starting ATLAS - Singapore OpenStreetMap Monitor...")
-    print("Navigate to http://localhost:5000")
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Get port from environment variable (Railway sets this automatically)
+    port = int(os.environ.get('PORT', 5000))
+    
+    # Check if running in production
+    is_production = os.environ.get('RAILWAY_ENVIRONMENT') is not None
+    
+    if is_production:
+        print("Starting ATLAS - Singapore OpenStreetMap Monitor (Production)")
+        print(f"Running on port {port}")
+    else:
+        print("Starting ATLAS - Singapore OpenStreetMap Monitor (Development)")
+        print("Navigate to http://localhost:5000")
+    
+    app.run(debug=not is_production, host='0.0.0.0', port=port)
