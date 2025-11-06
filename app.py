@@ -1157,20 +1157,48 @@ def get_stats():
 @app.route('/oauth/login')
 def oauth_login():
     """Initiate OSM OAuth login"""
-    # Clean up old states before creating a new one
-    cleanup_expired_states()
-    
-    state = secrets.token_urlsafe(32)
-    
-    # Store state server-side with timestamp (not in session cookie)
-    oauth_states[state] = datetime.now(timezone.utc)
-    
-    print(f"🔐 Initiating OAuth login...")
-    print(f"   Generated state: {state[:20]}...")
-    print(f"   Total active states: {len(oauth_states)}")
-    
-    auth_url = f"{OSM_OAUTH_URL}?client_id={OSM_CLIENT_ID}&redirect_uri={OSM_REDIRECT_URI}&response_type=code&scope=read_prefs&state={state}"
-    return redirect(auth_url)
+    try:
+        # Check if OAuth credentials are configured
+        if OSM_CLIENT_ID == 'YOUR_CLIENT_ID_HERE' or not OSM_CLIENT_ID:
+            return jsonify({
+                'error': 'OAuth not configured',
+                'message': 'OSM_CLIENT_ID environment variable is not set',
+                'hint': 'Set OSM_CLIENT_ID, OSM_CLIENT_SECRET, and OSM_REDIRECT_URI in Render environment variables'
+            }), 500
+        
+        if OSM_CLIENT_SECRET == 'YOUR_CLIENT_SECRET_HERE' or not OSM_CLIENT_SECRET:
+            return jsonify({
+                'error': 'OAuth not configured',
+                'message': 'OSM_CLIENT_SECRET environment variable is not set',
+                'hint': 'Set OSM_CLIENT_SECRET in Render environment variables'
+            }), 500
+        
+        # Clean up old states before creating a new one
+        cleanup_expired_states()
+        
+        state = secrets.token_urlsafe(32)
+        
+        # Store state server-side with timestamp (not in session cookie)
+        oauth_states[state] = datetime.now(timezone.utc)
+        
+        print(f"🔐 Initiating OAuth login...")
+        print(f"   Client ID: {OSM_CLIENT_ID[:20]}...")
+        print(f"   Redirect URI: {OSM_REDIRECT_URI}")
+        print(f"   Generated state: {state[:20]}...")
+        print(f"   Total active states: {len(oauth_states)}")
+        
+        auth_url = f"{OSM_OAUTH_URL}?client_id={OSM_CLIENT_ID}&redirect_uri={OSM_REDIRECT_URI}&response_type=code&scope=read_prefs&state={state}"
+        return redirect(auth_url)
+        
+    except Exception as e:
+        print(f"❌ Error in oauth_login: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': 'OAuth login failed',
+            'message': str(e),
+            'hint': 'Check Render logs and verify environment variables are set'
+        }), 500
 
 @app.route('/oauth/callback')
 def oauth_callback():

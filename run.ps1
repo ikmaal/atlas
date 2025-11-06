@@ -14,7 +14,7 @@
 # Your OSM OAuth Credentials
 $env:OSM_CLIENT_ID="q-a7gttnOHrFfToAYgZnWU9tZuf6QpHLBNRd4YMxgSU"
 $env:OSM_CLIENT_SECRET="qGbFyDFxXG9adcfEBeMB_UE6e8JYf8tUX4vNVl7zxh8"
-$env:OSM_REDIRECT_URI="http://127.0.0.1:5000/oauth/callback"
+$env:OSM_REDIRECT_URI="https://atlas-dashboard-iydv.onrender.com/oauth/callback"
 $env:SECRET_KEY="a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2"
 
 Write-Host "================================================" -ForegroundColor Cyan
