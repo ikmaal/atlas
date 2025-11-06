@@ -1,0 +1,12 @@
+# Files to ignore during Render deployment
+*.md
+!README.md
+!DEPLOYMENT.md
+docs/
+run.ps1
+.vscode/
+.git/
+__pycache__/
+*.pyc
+.secret_key
+
