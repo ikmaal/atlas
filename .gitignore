@@ -1,0 +1,66 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Flask
+instance/
+.webassets-cache
+flask_session/*
+!flask_session/.gitkeep
+
+# Environment variables
+.env
+.env.local
+.secret_key
+
+# Google Sheets credentials
+google_credentials.json
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Static uploads (keep directory but ignore files)
+static/uploads/*
+!static/uploads/.gitkeep
+
+# JSON data files (commit empty versions for initialization)
+# Note: These files will be reset on Render restarts (ephemeral storage)
+
+# Documentation files generated during development
+*_COMPLETED.md
+*_FIX*.md
+*_IMPLEMENTATION.md
+*_SUMMARY.md
+QUICK_START*.md

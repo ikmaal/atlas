@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: atlas-dashboard
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 120 --workers 1
+    envVars:
+      - key: OSM_CLIENT_ID
+        sync: false
+      - key: OSM_CLIENT_SECRET
+        sync: false
+      - key: OSM_REDIRECT_URI
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: SESSION_COOKIE_SECURE
+        value: "True"
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: GOOGLE_SHEETS_ENABLED
+        value: "False"
+
