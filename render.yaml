@@ -18,6 +18,8 @@ services:
         value: "True"
       - key: ANTHROPIC_API_KEY
         sync: false
-      - key: GOOGLE_SHEETS_ENABLED
-        value: "False"
+      - key: GOOGLE_CREDENTIALS_JSON
+        sync: false
+
+
 

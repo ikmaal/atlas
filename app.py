@@ -106,7 +106,9 @@ changeset_details_cache = {}
 # Google Sheets Configuration
 # ============================================
 
-GOOGLE_SHEETS_ENABLED = os.path.exists('google_credentials.json')
+# Check if Google Sheets credentials are available (file or env var)
+GOOGLE_CREDENTIALS_JSON = os.environ.get('GOOGLE_CREDENTIALS_JSON', '')
+GOOGLE_SHEETS_ENABLED = os.path.exists('google_credentials.json') or bool(GOOGLE_CREDENTIALS_JSON)
 
 def get_sheets_client():
     """Initialize Google Sheets client"""
@@ -118,13 +120,24 @@ def get_sheets_client():
             'https://www.googleapis.com/auth/spreadsheets',
             'https://www.googleapis.com/auth/drive'
         ]
-        creds = Credentials.from_service_account_file(
-            'google_credentials.json',
-            scopes=scopes
-        )
+        
+        # Try to load from environment variable first (for Render/cloud deployment)
+        if GOOGLE_CREDENTIALS_JSON:
+            import json
+            creds_dict = json.loads(GOOGLE_CREDENTIALS_JSON)
+            creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        # Fallback to file (for local development)
+        elif os.path.exists('google_credentials.json'):
+            creds = Credentials.from_service_account_file('google_credentials.json', scopes=scopes)
+        else:
+            print("❌ No Google credentials found")
+            return None
+            
         return gspread.authorize(creds)
     except Exception as e:
         print(f"❌ Google Sheets Error: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 def log_changeset_needing_review(changeset_data, flags, analysis_text):
