@@ -493,6 +493,16 @@ body {
     gap: 24px;
 }
 
+/* Map view - full width */
+#map-view {
+    width: 100%;
+}
+
+#map-view .map-card {
+    width: 100%;
+    max-width: 100%;
+}
+
 .card {
     background: var(--bg-secondary);
     border-radius: 16px;
