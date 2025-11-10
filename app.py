@@ -99,6 +99,9 @@ SINGAPORE_BBOX_COORDS = {
     'max_lat': 1.465      # Reduced significantly to exclude Johor/Malaysia
 }
 
+# Time range for fetching changesets (in hours)
+CHANGESET_TIME_RANGE_HOURS = int(os.environ.get('CHANGESET_TIME_RANGE_HOURS', '24'))
+
 # Cache for changeset details to avoid repeated API calls
 changeset_details_cache = {}
 
@@ -484,15 +487,15 @@ def fetch_osm_changesets(bbox=SINGAPORE_BBOX, limit=200):
         all_changesets = []
         seen_ids = set()
         
-        # Start from now and go backwards
+        # Start from now and go backwards (configurable time range)
         current_end = datetime.now(timezone.utc)
-        start_time = current_end - timedelta(days=365)
+        start_time = current_end - timedelta(hours=CHANGESET_TIME_RANGE_HOURS)
         
         # We'll make multiple requests, each time using the oldest changeset from the previous batch
         # as the end time for the next batch (pagination backwards in time)
         max_requests = (limit + 99) // 100  # Max requests needed to reach desired limit
         
-        print(f"📊 Fetching up to {limit} changesets (max {max_requests} API calls)...")
+        print(f"📊 Fetching up to {limit} changesets from last {CHANGESET_TIME_RANGE_HOURS} hours (max {max_requests} API calls)...")
         
         for request_num in range(max_requests):
             # Stop if we already have enough changesets that pass the Singapore filter
@@ -713,7 +716,8 @@ def get_statistics(changesets):
         'total_changes': total_changes,
         'unique_users': unique_users,
         'top_contributors': top_contributors,
-        'validation': validation_counts
+        'validation': validation_counts,
+        'time_range_hours': CHANGESET_TIME_RANGE_HOURS
     }
 
 @app.route('/')
@@ -1384,7 +1388,7 @@ def get_user_changesets():
         url = "https://api.openstreetmap.org/api/0.6/changesets"
         
         end_time = datetime.now(timezone.utc)
-        start_time = end_time - timedelta(days=365)
+        start_time = end_time - timedelta(hours=CHANGESET_TIME_RANGE_HOURS)
         
         params = {
             'user': user_id,

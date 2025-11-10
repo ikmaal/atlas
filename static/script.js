@@ -397,6 +397,26 @@ function updateStatistics(stats) {
     document.getElementById('totalChanges').textContent = formatNumber(stats.total_changes);
     document.getElementById('uniqueUsers').textContent = formatNumber(stats.unique_users);
     
+    // Update time range label
+    if (stats.time_range_hours) {
+        const hours = stats.time_range_hours;
+        let timeText;
+        
+        if (hours < 24) {
+            timeText = `last ${hours} hour${hours !== 1 ? 's' : ''}`;
+        } else if (hours === 24) {
+            timeText = 'last 24 hours';
+        } else if (hours < 168) {
+            const days = Math.round(hours / 24);
+            timeText = `last ${days} day${days !== 1 ? 's' : ''}`;
+        } else {
+            const weeks = Math.round(hours / 168);
+            timeText = `last ${weeks} week${weeks !== 1 ? 's' : ''}`;
+        }
+        
+        document.getElementById('timeRangeLabel').textContent = `Showing data from the ${timeText}`;
+    }
+    
     // Animate the numbers
     animateValue('totalChangesets', 0, stats.total_changesets, 1000);
     animateValue('totalChanges', 0, stats.total_changes, 1000);

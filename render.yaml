@@ -20,6 +20,8 @@ services:
         sync: false
       - key: GOOGLE_CREDENTIALS_JSON
         sync: false
+      - key: CHANGESET_TIME_RANGE_HOURS
+        value: "24"
 
 
 
