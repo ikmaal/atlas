@@ -242,9 +242,9 @@ def log_changeset_needing_review(changeset_data, flags, analysis_text):
             ]
             sheet.insert_row(headers, 1)
         
-        # Append the changeset needing review
-        sheet.append_row(row)
-        print(f"✅ Logged changeset #{changeset_id} needing review to Google Sheets")
+        # Insert the changeset needing review at row 2 (top, after headers)
+        sheet.insert_row(row, 2)
+        print(f"✅ Logged changeset #{changeset_id} needing review to Google Sheets (at top)")
         
     except Exception as e:
         print(f"❌ Error logging to Google Sheets: {e}")
