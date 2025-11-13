@@ -529,6 +529,11 @@ function updateChangesetsList(changesets) {
 function updateContributorsList(contributors) {
     const container = document.getElementById('contributorsList');
     
+    // Check if container exists (it might not exist on all pages)
+    if (!container) {
+        return;
+    }
+    
     if (!contributors || contributors.length === 0) {
         container.innerHTML = `
             <div class="empty-state">

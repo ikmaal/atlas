@@ -946,24 +946,31 @@ def get_changeset_comparison(changeset_id):
                 
                 if len(future_to_item) > 0:
                     completed = 0
+                    errors = 0
                     try:
-                        for future in as_completed(future_to_item, timeout=30):
+                        # Increased timeout from 30 to 60 seconds for better reliability with ways
+                        for future in as_completed(future_to_item, timeout=60):
                             item = future_to_item[future]
                             completed += 1
                             try:
-                                geometry = future.result()
+                                geometry = future.result(timeout=15)  # Individual timeout per element
                                 if geometry:
                                     item['lat'] = geometry['lat']
                                     item['lon'] = geometry['lon']
                                     item['geometry'] = geometry.get('geometry')  # Add full geometry array
                                     geo_type = "line" if geometry.get('geometry') else "point"
-                                    print(f"  ✓ [{completed}/{len(future_to_item)}] {item['type']} #{item['id']}: {geometry['lat']:.4f}, {geometry['lon']:.4f} ({geo_type})")
+                                    if completed % 5 == 0 or item['type'] == 'way':  # Always log ways
+                                        print(f"  ✓ [{completed}/{len(future_to_item)}] {item['type']} #{item['id']}: {geometry['lat']:.4f}, {geometry['lon']:.4f} ({geo_type})")
                                 else:
-                                    print(f"  ✗ [{completed}/{len(future_to_item)}] {item['type']} #{item['id']}: no geometry")
+                                    errors += 1
+                                    print(f"  ✗ [{completed}/{len(future_to_item)}] {item['type']} #{item['id']}: no geometry returned")
                             except Exception as e:
-                                print(f"  ✗ [{completed}/{len(future_to_item)}] {item['type']} #{item['id']}: {str(e)[:50]}")
+                                errors += 1
+                                print(f"  ✗ [{completed}/{len(future_to_item)}] {item['type']} #{item['id']}: {str(e)}")
                     except TimeoutError:
                         print(f"  ⚠️  Timeout after {completed}/{len(future_to_item)} completed - continuing with partial results")
+                    
+                    print(f"  📊 Deleted elements: {completed - errors} successful, {errors} failed")
         
         comparison_data['deleted'] = deleted_items
         print(f"✅ Comparison complete: {len(comparison_data['created'])} created, {len(comparison_data['modified'])} modified, {len(comparison_data['deleted'])} deleted")
@@ -1093,6 +1100,7 @@ def fetch_element_geometry(element_type, element_id, version=None):
         if version is not None:
             prev_version = int(version) - 1
             if prev_version < 1:
+                print(f"    ⚠️  {element_type} {element_id}: version {version} is too low (prev would be {prev_version})")
                 return None
             
             # For nodes, just fetch the previous version directly
@@ -1115,25 +1123,72 @@ def fetch_element_geometry(element_type, element_id, version=None):
                         }
                 return None
             
-            # For ways/relations, fetch with /full to get all nodes
-            url = f"https://api.openstreetmap.org/api/0.6/{element_type}/{element_id}/{prev_version}/full"
-            response = requests.get(url, headers=headers, timeout=10)
+            # For ways: OSM API doesn't support /full for historical versions
+            # So we fetch the way to get node references, then fetch each node
+            print(f"    🔍 Fetching {element_type} {element_id} v{prev_version}...")
+            url = f"https://api.openstreetmap.org/api/0.6/{element_type}/{element_id}/{prev_version}"
+            response = requests.get(url, headers=headers, timeout=15)
             response.raise_for_status()
             
             root = ET.fromstring(response.content)
+            way_elem = root.find('.//way')
             
-            # Collect all node coordinates in order
+            if way_elem is None:
+                print(f"    ✗ Way {element_id} not found in response")
+                return None
+            
+            # Get node references from the way
+            node_refs = [nd.get('ref') for nd in way_elem.findall('nd')]
+            print(f"    📍 Way has {len(node_refs)} node references")
+            
+            if not node_refs:
+                return None
+            
+            # Fetch each node's coordinates
             lats = []
             lons = []
             geometry = []
             
-            for node in root.findall('.//node'):
-                lat = node.get('lat')
-                lon = node.get('lon')
-                if lat and lon:
-                    lats.append(float(lat))
-                    lons.append(float(lon))
-                    geometry.append([float(lat), float(lon)])
+            for node_ref in node_refs:
+                try:
+                    # Try fetching the current node first
+                    node_url = f"https://api.openstreetmap.org/api/0.6/node/{node_ref}"
+                    node_response = requests.get(node_url, headers=headers, timeout=5)
+                    
+                    if node_response.status_code == 200:
+                        node_root = ET.fromstring(node_response.content)
+                        node = node_root.find('.//node')
+                        if node is not None:
+                            lat = node.get('lat')
+                            lon = node.get('lon')
+                            if lat and lon:
+                                lats.append(float(lat))
+                                lons.append(float(lon))
+                                geometry.append([float(lat), float(lon)])
+                    elif node_response.status_code == 410:  # Node was deleted
+                        # Try fetching the node's history to get its last coordinates
+                        try:
+                            history_url = f"https://api.openstreetmap.org/api/0.6/node/{node_ref}/history"
+                            history_resp = requests.get(history_url, headers=headers, timeout=5)
+                            if history_resp.status_code == 200:
+                                hist_root = ET.fromstring(history_resp.content)
+                                # Find the last visible version
+                                visible_nodes = [n for n in hist_root.findall('.//node') if n.get('visible') == 'true']
+                                if visible_nodes:
+                                    last_visible = visible_nodes[-1]  # Last visible version
+                                    lat = last_visible.get('lat')
+                                    lon = last_visible.get('lon')
+                                    if lat and lon:
+                                        lats.append(float(lat))
+                                        lons.append(float(lon))
+                                        geometry.append([float(lat), float(lon)])
+                        except:
+                            pass  # Skip this node if history fetch fails
+                except Exception as e:
+                    print(f"      ✗ Failed to fetch node {node_ref}: {str(e)[:30]}")
+                    continue
+            
+            print(f"    ✓ Successfully fetched {len(geometry)}/{len(node_refs)} nodes")
         else:
             # For current elements, fetch the full data
             if element_type == 'node':
