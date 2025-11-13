@@ -8,7 +8,7 @@ const SLACK_WEBHOOK_URL = 'YOUR_WEBHOOK_URL_HERE';
 // Which column is "Status" (N = 14th column in this case)
 const STATUS_COLUMN = 14;
 
-// Track processed rows to avoid duplicates
+// Track processed changesets to avoid duplicates
 const SCRIPT_PROPERTIES = PropertiesService.getScriptProperties();
 
 // ============================================
@@ -16,43 +16,39 @@ const SCRIPT_PROPERTIES = PropertiesService.getScriptProperties();
 // ============================================
 
 function onEdit(e) {
-  // Only trigger on row additions (when data is appended)
+  // Only trigger on row insertions at row 2
   if (!e || !e.range) return;
   
   const sheet = e.source.getActiveSheet();
   const editedRow = e.range.getRow();
   
-  // Skip if header row or if we've already processed this row
-  if (editedRow === 1) return;
+  // Only process row 2 (where new entries are inserted)
+  if (editedRow !== 2) return;
   
-  // Get all data from the edited row
-  const rowData = sheet.getRange(editedRow, 1, 1, sheet.getLastColumn()).getValues()[0];
+  // Get all data from row 2
+  const rowData = sheet.getRange(2, 1, 1, sheet.getLastColumn()).getValues()[0];
   
-  // Check if this is a new changeset (has data but not processed)
-  if (rowData[1] && !isRowProcessed(editedRow)) {
-    sendSlackNotification(rowData, editedRow);
-    markRowAsProcessed(editedRow);
+  // Check if this is a new changeset (has data and not processed by changeset ID)
+  if (rowData[1] && !isChangesetProcessed(rowData[1])) {
+    sendSlackNotification(rowData, 2);
+    markChangesetAsProcessed(rowData[1]);
   }
 }
 
-// Alternative: Trigger when rows are appended (more reliable)
+// Alternative: Trigger when rows are inserted (more reliable)
 function onRowAdded(e) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  const lastRow = sheet.getLastRow();
   
-  // Skip header
-  if (lastRow <= 1) return;
+  // Skip if only headers exist
+  if (sheet.getLastRow() < 2) return;
   
-  // Check if we've already processed this row
-  if (isRowProcessed(lastRow)) return;
+  // Always check row 2 (where new entries are inserted at the top)
+  const rowData = sheet.getRange(2, 1, 1, sheet.getLastColumn()).getValues()[0];
   
-  // Get the last row data
-  const rowData = sheet.getRange(lastRow, 1, 1, sheet.getLastColumn()).getValues()[0];
-  
-  // If there's data in the changeset ID column, send notification
-  if (rowData[1]) {
-    sendSlackNotification(rowData, lastRow);
-    markRowAsProcessed(lastRow);
+  // If there's data in the changeset ID column and not processed
+  if (rowData[1] && !isChangesetProcessed(rowData[1])) {
+    sendSlackNotification(rowData, 2);
+    markChangesetAsProcessed(rowData[1]);
   }
 }
 
@@ -122,30 +118,30 @@ function sendSlackNotification(rowData, rowNumber) {
 }
 
 // ============================================
-// Helper Functions - Track Processed Rows
+// Helper Functions - Track Processed Changesets by ID
 // ============================================
 
-function isRowProcessed(rowNumber) {
-  const processed = SCRIPT_PROPERTIES.getProperty('processed_rows');
+function isChangesetProcessed(changesetId) {
+  const processed = SCRIPT_PROPERTIES.getProperty('processed_changesets');
   if (!processed) return false;
   
-  const processedRows = JSON.parse(processed);
-  return processedRows.includes(rowNumber);
+  const processedIds = JSON.parse(processed);
+  return processedIds.includes(String(changesetId));
 }
 
-function markRowAsProcessed(rowNumber) {
-  const processed = SCRIPT_PROPERTIES.getProperty('processed_rows');
-  let processedRows = processed ? JSON.parse(processed) : [];
+function markChangesetAsProcessed(changesetId) {
+  const processed = SCRIPT_PROPERTIES.getProperty('processed_changesets');
+  let processedIds = processed ? JSON.parse(processed) : [];
   
-  if (!processedRows.includes(rowNumber)) {
-    processedRows.push(rowNumber);
+  if (!processedIds.includes(String(changesetId))) {
+    processedIds.push(String(changesetId));
     
-    // Keep only last 100 rows to avoid storage limits
-    if (processedRows.length > 100) {
-      processedRows = processedRows.slice(-100);
+    // Keep only last 100 changesets to avoid storage limits
+    if (processedIds.length > 100) {
+      processedIds = processedIds.slice(-100);
     }
     
-    SCRIPT_PROPERTIES.setProperty('processed_rows', JSON.stringify(processedRows));
+    SCRIPT_PROPERTIES.setProperty('processed_changesets', JSON.stringify(processedIds));
   }
 }
 
@@ -155,15 +151,16 @@ function markRowAsProcessed(rowNumber) {
 
 function testNotification() {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  const lastRow = sheet.getLastRow();
   
-  if (lastRow <= 1) {
+  if (sheet.getLastRow() < 2) {
     Logger.log("No data to test with");
     return;
   }
   
-  const rowData = sheet.getRange(lastRow, 1, 1, sheet.getLastColumn()).getValues()[0];
-  sendSlackNotification(rowData, lastRow);
-  Logger.log("Test notification sent!");
+  // Test with row 2 (most recent entry at the top)
+  const rowData = sheet.getRange(2, 1, 1, sheet.getLastColumn()).getValues()[0];
+  sendSlackNotification(rowData, 2);
+  Logger.log("Test notification sent for changeset at row 2!");
 }
+
 

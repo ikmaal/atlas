@@ -242,6 +242,18 @@ def log_changeset_needing_review(changeset_data, flags, analysis_text):
             ]
             sheet.insert_row(headers, 1)
         
+        # Check if changeset already exists in the sheet (to prevent duplicates)
+        try:
+            # Get all changeset IDs from column B (Changeset ID column)
+            changeset_ids = sheet.col_values(2)  # Column B is the 2nd column
+            
+            # Skip if this changeset is already logged (check from row 2 onwards, skip header)
+            if str(changeset_id) in changeset_ids[1:]:  # Skip header row
+                print(f"ℹ️ Changeset #{changeset_id} already logged to Google Sheets, skipping duplicate")
+                return
+        except Exception as e:
+            print(f"⚠️ Could not check for duplicates: {e}, proceeding with insert")
+        
         # Insert the changeset needing review at row 2 (top, after headers)
         sheet.insert_row(row, 2)
         print(f"✅ Logged changeset #{changeset_id} needing review to Google Sheets (at top)")
@@ -651,9 +663,29 @@ def fetch_osm_changesets(bbox=SINGAPORE_BBOX, limit=200):
             else:
                 print(f"   ⚠️  Sample changeset {sample['id']} has no details!")
         
-        # Validate all changesets
+        # Validate all changesets and log those needing review
         for cs in changesets:
             cs['validation'] = validate_changeset(cs)
+            
+            # Log to Google Sheets if validation status is 'needs_review'
+            if cs['validation'].get('status') == 'needs_review':
+                # Transform changeset data to match expected format for logging
+                details = cs.get('details', {})
+                log_data = {
+                    'id': cs['id'],
+                    'user': cs['user'],
+                    'created': details.get('total_created', 0),
+                    'modified': details.get('total_modified', 0),
+                    'deleted': details.get('total_deleted', 0),
+                    'tags': cs.get('tags', {}),
+                    'created_at': cs.get('created_at', 'Unknown')
+                }
+                
+                # Get validation reasons as flags
+                validation_flags = cs['validation'].get('reasons', [])
+                
+                # Log to Google Sheets
+                log_changeset_needing_review(log_data, validation_flags, 'Auto-detected during fetch')
         
         total_time = time.time() - start_time_overall
         print(f"✅ Loaded {len(changesets)} changesets successfully in {total_time:.1f}s")
@@ -1662,9 +1694,29 @@ def get_user_singapore_stats(username):
                 except Exception as e:
                     print(f"Error getting details for changeset {cs['id']}: {e}")
         
-        # Validate changesets
+        # Validate changesets and log those needing review
         for cs in changesets:
             cs['validation'] = validate_changeset(cs)
+            
+            # Log to Google Sheets if validation status is 'needs_review'
+            if cs['validation'].get('status') == 'needs_review':
+                # Transform changeset data to match expected format for logging
+                details = cs.get('details', {})
+                log_data = {
+                    'id': cs['id'],
+                    'user': cs['user'],
+                    'created': details.get('total_created', 0),
+                    'modified': details.get('total_modified', 0),
+                    'deleted': details.get('total_deleted', 0),
+                    'tags': cs.get('tags', {}),
+                    'created_at': cs.get('created_at', 'Unknown')
+                }
+                
+                # Get validation reasons as flags
+                validation_flags = cs['validation'].get('reasons', [])
+                
+                # Log to Google Sheets
+                log_changeset_needing_review(log_data, validation_flags, 'Auto-detected during user stats fetch')
         
         # Calculate statistics
         total_changesets = len(changesets)
