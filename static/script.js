@@ -21,7 +21,6 @@ let validationVisibility = {
 let currentFilters = {
     search: '',
     validity: 'all',
-    timePeriod: '30d',
     keyword: ''
 };
 
@@ -103,7 +102,6 @@ function toggleFilters() {
 function initFilters() {
     const searchInput = document.getElementById('searchFilter');
     const keywordInput = document.getElementById('keywordFilter');
-    const timePeriodSelect = document.getElementById('timePeriodFilter');
     const filterButtons = document.querySelectorAll('.filter-btn');
 
     // Search input filter (username)
@@ -118,14 +116,6 @@ function initFilters() {
     if (keywordInput) {
         keywordInput.addEventListener('input', function(e) {
             currentFilters.keyword = e.target.value.toLowerCase();
-            applyFilters();
-        });
-    }
-
-    // Time period select filter
-    if (timePeriodSelect) {
-        timePeriodSelect.addEventListener('change', function(e) {
-            currentFilters.timePeriod = e.target.value;
             applyFilters();
         });
     }
@@ -164,33 +154,7 @@ function applyFilters() {
         const matchesValidity = currentFilters.validity === 'all' || 
                                validityStatus === currentFilters.validity;
 
-        // Filter by time period
-        let matchesTimePeriod = true;
-        if (currentFilters.timePeriod !== 'all') {
-            const now = new Date();
-            const changesetDate = new Date(cs.created_at);
-            let cutoffDate;
-
-            switch(currentFilters.timePeriod) {
-                case '24h':
-                    cutoffDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-                    break;
-                case '7d':
-                    cutoffDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-                    break;
-                case '30d':
-                    cutoffDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-                    break;
-                default:
-                    cutoffDate = null;
-            }
-
-            if (cutoffDate) {
-                matchesTimePeriod = changesetDate >= cutoffDate;
-            }
-        }
-
-        return matchesSearch && matchesKeyword && matchesValidity && matchesTimePeriod;
+        return matchesSearch && matchesKeyword && matchesValidity;
     });
 
     updateChangesetsList(filtered);

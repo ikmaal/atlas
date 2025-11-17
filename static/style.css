@@ -182,7 +182,7 @@ body {
     flex: 0 !important;
     margin-left: auto;
     padding: 2px 6px;
-    background: #1a1a1a;
+    background: #6b7280;
     color: white;
     font-size: 0.585rem;
     font-weight: 700;
@@ -191,8 +191,8 @@ body {
 }
 
 .sidenav-item.active .sidenav-beta-badge {
-    background: white;
-    color: #1a1a1a;
+    background: #9ca3af;
+    color: white;
 }
 
 .sidenav-divider {
