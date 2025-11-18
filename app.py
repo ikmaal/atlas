@@ -1,11 +1,13 @@
 from flask import Flask, jsonify, render_template, session, redirect, request, url_for, send_from_directory
 from flask_cors import CORS
 from flask_session import Session
+from flask_caching import Cache
 import requests
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from dateutil import parser as date_parser
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import lru_cache
 import secrets
 import os
 import json
@@ -52,6 +54,21 @@ if not os.path.exists('./flask_session'):
     print("📁 Created flask_session directory")
 
 Session(app)
+
+# Cache configuration for performance optimization
+app.config['CACHE_TYPE'] = 'FileSystemCache'
+app.config['CACHE_DIR'] = './cache'
+app.config['CACHE_DEFAULT_TIMEOUT'] = 3600  # 1 hour cache
+app.config['CACHE_THRESHOLD'] = 500  # Maximum number of cache items
+
+# Ensure cache directory exists
+if not os.path.exists('./cache'):
+    os.makedirs('./cache')
+    print("💾 Created cache directory")
+
+# Initialize cache
+cache = Cache(app)
+print("💾 Cache initialized successfully")
 
 # OSM OAuth Configuration
 # IMPORTANT: You need to register your app at https://www.openstreetmap.org/oauth2/applications
@@ -790,10 +807,12 @@ def debug_changeset(changeset_id):
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/changeset/<changeset_id>/comparison')
+@cache.cached(timeout=3600, key_prefix='comparison_%s')
 def get_changeset_comparison(changeset_id):
     """
     Fetch detailed before/after comparison for a changeset
     Returns all changes with old and new values
+    CACHED: Results cached for 1 hour for performance
     """
     try:
         print(f"🔍 Fetching comparison for changeset #{changeset_id}...")
@@ -1040,11 +1059,13 @@ def parse_osm_element(elem, action):
     
     return element_data
 
+@lru_cache(maxsize=1000)
 def fetch_previous_element_version(element_type, element_id, current_version):
     """
     Fetch the previous version of an element to get its old tags/attributes
     Used for showing before/after state of modified elements
     Returns dict with old_tags, old_lat, old_lon, etc. or None
+    CACHED: Uses LRU cache to avoid redundant API calls
     """
     try:
         headers = {'User-Agent': 'ATLAS-Singapore/1.0'}
@@ -1087,11 +1108,13 @@ def fetch_previous_element_version(element_type, element_id, current_version):
         print(f"    ✗ Error fetching previous version for {element_type} {element_id} v{current_version}: {e}")
         return None
 
+@lru_cache(maxsize=1000)
 def fetch_element_geometry(element_type, element_id, version=None):
     """
     Fetch full geometry for a way, relation, or deleted node
     For deleted elements, must provide version number to fetch the previous version
     Returns dict with lat/lon (center) AND geometry array (full coordinates) or None
+    CACHED: Uses LRU cache to avoid redundant API calls
     """
     try:
         headers = {'User-Agent': 'ATLAS-Singapore/1.0'}
@@ -2502,8 +2525,10 @@ def extract_changeset_id(message):
     return None
 
 
+@lru_cache(maxsize=500)
 def fetch_changeset_data(changeset_id):
-    """Fetch changeset data from OSM API"""
+    """Fetch changeset data from OSM API
+    CACHED: Uses LRU cache to avoid redundant API calls"""
     try:
         # Fetch changeset metadata
         changeset_url = f'https://api.openstreetmap.org/api/0.6/changeset/{changeset_id}'

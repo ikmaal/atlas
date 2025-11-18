@@ -27,6 +27,7 @@ wheels/
 instance/
 .webassets-cache
 flask_session/
+cache/
 
 # Environment variables
 .env
