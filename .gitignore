@@ -32,6 +32,7 @@ cache/
 # Environment variables
 .env
 .secret_key
+.oauth_states.json
 
 # Google Sheets credentials
 google_credentials.json

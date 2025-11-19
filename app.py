@@ -80,9 +80,38 @@ OSM_OAUTH_URL = 'https://www.openstreetmap.org/oauth2/authorize'
 OSM_TOKEN_URL = 'https://www.openstreetmap.org/oauth2/token'
 OSM_API_URL = 'https://api.openstreetmap.org/api/0.6'
 
-# OAuth state storage (server-side)
+# OAuth state storage (server-side with file persistence)
 # Store states with timestamps to prevent session cookie issues during OAuth redirects
-oauth_states = {}
+OAUTH_STATES_FILE = '.oauth_states.json'
+
+def load_oauth_states():
+    """Load OAuth states from file"""
+    if os.path.exists(OAUTH_STATES_FILE):
+        try:
+            with open(OAUTH_STATES_FILE, 'r') as f:
+                data = json.load(f)
+                # Convert ISO timestamp strings back to datetime objects
+                return {state: datetime.fromisoformat(timestamp) 
+                       for state, timestamp in data.items()}
+        except Exception as e:
+            print(f"⚠️  Could not load OAuth states: {e}")
+            return {}
+    return {}
+
+def save_oauth_states(states):
+    """Save OAuth states to file"""
+    try:
+        # Convert datetime objects to ISO format strings for JSON serialization
+        data = {state: timestamp.isoformat() 
+               for state, timestamp in states.items()}
+        with open(OAUTH_STATES_FILE, 'w') as f:
+            json.dump(data, f)
+    except Exception as e:
+        print(f"⚠️  Could not save OAuth states: {e}")
+
+# Initialize OAuth states from file
+oauth_states = load_oauth_states()
+print(f"🔐 Loaded {len(oauth_states)} OAuth states from storage")
 
 def cleanup_expired_states():
     """Remove OAuth states older than 10 minutes"""
@@ -93,6 +122,7 @@ def cleanup_expired_states():
         del oauth_states[state]
     if expired:
         print(f"🧹 Cleaned up {len(expired)} expired OAuth states")
+        save_oauth_states(oauth_states)  # Persist after cleanup
 
 # Debug: Print OAuth config on startup
 print(f"🔧 OAuth Configuration:")
@@ -1461,6 +1491,7 @@ def oauth_login():
         
         # Store state server-side with timestamp (not in session cookie)
         oauth_states[state] = datetime.now(timezone.utc)
+        save_oauth_states(oauth_states)  # Persist to file
         
         print(f"🔐 Initiating OAuth login...")
         print(f"   Client ID: {OSM_CLIENT_ID[:20]}...")
@@ -1507,6 +1538,7 @@ def oauth_callback():
     
     # State is valid - remove it (one-time use)
     state_timestamp = oauth_states.pop(received_state)
+    save_oauth_states(oauth_states)  # Persist state removal
     state_age = (datetime.now(timezone.utc) - state_timestamp).total_seconds()
     print(f"✅ State validated (age: {state_age:.1f}s)")
     
