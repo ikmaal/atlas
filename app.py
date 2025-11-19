@@ -1280,6 +1280,160 @@ def get_stats():
         'statistics': stats
     })
 
+@app.route('/api/analytics')
+def get_analytics():
+    """API endpoint to get analytics data for charts"""
+    try:
+        # Fixed to 24 hours
+        hours = 24
+        
+        print(f"📊 Fetching analytics for last 24 hours")
+        
+        # Fetch changesets for the time range
+        changesets = fetch_osm_changesets(bbox=SINGAPORE_BBOX, limit=1000)
+        
+        # Filter by time range
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        changesets = [cs for cs in changesets if date_parser.parse(cs['created_at']) >= cutoff]
+        
+        print(f"📊 Found {len(changesets)} changesets in last 24 hours")
+        
+        # Hourly buckets for 24h range
+        bucket_hours = 1
+        
+        # Group by time buckets for timeline
+        timeline_data = {}
+        
+        for cs in changesets:
+            created_at = date_parser.parse(cs['created_at'])
+            # Round down to nearest bucket
+            bucket = created_at.replace(minute=0, second=0, microsecond=0)
+            bucket = bucket - timedelta(hours=bucket.hour % bucket_hours)
+            bucket_key = bucket.strftime('%Y-%m-%d %H:%M')
+            
+            if bucket_key not in timeline_data:
+                timeline_data[bucket_key] = {
+                    'created': 0,
+                    'modified': 0,
+                    'deleted': 0
+                }
+            
+            details = cs.get('details', {})
+            timeline_data[bucket_key]['created'] += details.get('total_created', 0)
+            timeline_data[bucket_key]['modified'] += details.get('total_modified', 0)
+            timeline_data[bucket_key]['deleted'] += details.get('total_deleted', 0)
+        
+        # Sort timeline by date
+        sorted_timeline = sorted(timeline_data.items())
+        
+        # Aggregate totals
+        total_created = sum(cs.get('details', {}).get('total_created', 0) for cs in changesets)
+        total_modified = sum(cs.get('details', {}).get('total_modified', 0) for cs in changesets)
+        total_deleted = sum(cs.get('details', {}).get('total_deleted', 0) for cs in changesets)
+        
+        # Element type breakdown
+        element_breakdown = {
+            'created': {'nodes': 0, 'ways': 0, 'relations': 0},
+            'modified': {'nodes': 0, 'ways': 0, 'relations': 0},
+            'deleted': {'nodes': 0, 'ways': 0, 'relations': 0}
+        }
+        
+        for cs in changesets:
+            details = cs.get('details', {})
+            for action in ['created', 'modified', 'deleted']:
+                if action in details:
+                    for elem_type in ['node', 'way', 'relation']:
+                        key = elem_type + 's'
+                        element_breakdown[action][key] += details[action].get(elem_type, 0)
+        
+        # Get users with changesets needing review
+        users_needing_review = {}
+        for cs in changesets:
+            validation_status = cs.get('validation', {}).get('status', 'valid')
+            if validation_status == 'needs_review':
+                user = cs.get('user', 'Unknown')
+                users_needing_review[user] = users_needing_review.get(user, 0) + 1
+        
+        # Sort by number of changesets needing review
+        sorted_users = sorted(users_needing_review.items(), key=lambda x: x[1], reverse=True)[:10]
+        contributors_data = [{'user': user, 'changesets': count} for user, count in sorted_users]
+        
+        print(f"📊 Users with changesets needing review: {len(users_needing_review)}")
+        if contributors_data:
+            print(f"📊 Top users needing review: {contributors_data[:5]}")
+        
+        # Get statistics for validation
+        stats = get_statistics(changesets)
+        
+        # Format timeline labels (hourly for 24h)
+        formatted_labels = []
+        for label, _ in sorted_timeline:
+            dt = datetime.strptime(label, '%Y-%m-%d %H:%M')
+            formatted_labels.append(dt.strftime('%H:%M'))
+        
+        # Generate summary statistics
+        unique_contributors = len(set(cs.get('user', 'Unknown') for cs in changesets))
+        
+        # Find most active hour
+        hourly_activity = {}
+        for cs in changesets:
+            created_at = date_parser.parse(cs['created_at'])
+            hour_key = created_at.strftime('%H:00')
+            hourly_activity[hour_key] = hourly_activity.get(hour_key, 0) + 1
+        
+        most_active_hour = max(hourly_activity.items(), key=lambda x: x[1])[0] if hourly_activity else None
+        
+        summary = {
+            'total_changesets': len(changesets),
+            'total_edits': total_created + total_modified + total_deleted,
+            'breakdown': {
+                'created': total_created,
+                'modified': total_modified,
+                'deleted': total_deleted
+            },
+            'unique_contributors': unique_contributors,
+            'needs_review': stats.get('validation', {}).get('needs_review', 0),
+            'most_active_hour': most_active_hour,
+            'top_contributor': contributors_data[0]['user'] if contributors_data else None,
+            'top_contributor_count': contributors_data[0]['changesets'] if contributors_data else 0
+        }
+        
+        analytics_data = {
+            'timeline': {
+                'labels': formatted_labels,
+                'created': [data['created'] for _, data in sorted_timeline],
+                'modified': [data['modified'] for _, data in sorted_timeline],
+                'deleted': [data['deleted'] for _, data in sorted_timeline]
+            },
+            'editType': {
+                'created': total_created,
+                'modified': total_modified,
+                'deleted': total_deleted
+            },
+            'elementType': element_breakdown,
+            'contributors': contributors_data,
+            'validation': stats.get('validation', {'valid': 0, 'needs_review': 0}),
+            'summary': summary
+        }
+        
+        print(f"📊 Analytics prepared: {total_created} created, {total_modified} modified, {total_deleted} deleted")
+        print(f"📊 Found {len(contributors_data)} users with changesets needing review")
+        
+        return jsonify({
+            'success': True,
+            'analytics': analytics_data,
+            'changeset_count': len(changesets)
+        })
+        
+    except Exception as e:
+        print(f"❌ Error fetching analytics: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 # OAuth Routes
 @app.route('/oauth/login')
 def oauth_login():
