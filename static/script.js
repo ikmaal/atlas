@@ -66,19 +66,15 @@ function initTabs() {
             this.classList.add('active');
             document.getElementById(targetTab).classList.add('active');
 
-            // Hide/show stats grid based on tab
-            const container = document.querySelector('.container');
-            if (targetTab === 'atlas-ai') {
-                container.classList.add('hide-stats');
+            // Show stats only on dashboard tab
+            const dashboardStats = document.getElementById('dashboardStats');
+            const dashboardTimeRange = document.getElementById('dashboardTimeRange');
+            if (targetTab === 'dashboard') {
+                if (dashboardStats) dashboardStats.style.display = 'grid';
+                if (dashboardTimeRange) dashboardTimeRange.style.display = 'flex';
             } else {
-                container.classList.remove('hide-stats');
-            }
-
-            // Invalidate map size when switching to map view
-            if (targetTab === 'map-view' && map) {
-                setTimeout(() => {
-                    map.invalidateSize();
-                }, 100);
+                if (dashboardStats) dashboardStats.style.display = 'none';
+                if (dashboardTimeRange) dashboardTimeRange.style.display = 'none';
             }
         });
     });
@@ -357,10 +353,6 @@ async function loadData() {
 
 // Update statistics cards
 function updateStatistics(stats) {
-    document.getElementById('totalChangesets').textContent = formatNumber(stats.total_changesets);
-    document.getElementById('totalChanges').textContent = formatNumber(stats.total_changes);
-    document.getElementById('uniqueUsers').textContent = formatNumber(stats.unique_users);
-    
     // Update time range label
     if (stats.time_range_hours) {
         const hours = stats.time_range_hours;
@@ -378,13 +370,26 @@ function updateStatistics(stats) {
             timeText = `last ${weeks} week${weeks !== 1 ? 's' : ''}`;
         }
         
-        document.getElementById('timeRangeLabel').textContent = `Showing data from the ${timeText}`;
+        const timeRangeLabel = document.getElementById('timeRangeLabel');
+        if (timeRangeLabel) {
+            timeRangeLabel.textContent = `Showing data from the ${timeText}`;
+        }
     }
     
-    // Animate the numbers
-    animateValue('totalChangesets', 0, stats.total_changesets, 1000);
-    animateValue('totalChanges', 0, stats.total_changes, 1000);
-    animateValue('uniqueUsers', 0, stats.unique_users, 1000);
+    // Animate the numbers (with null checks)
+    const totalChangesetsEl = document.getElementById('totalChangesets');
+    const totalChangesEl = document.getElementById('totalChanges');
+    const changesetsNeedingReviewEl = document.getElementById('changesetsNeedingReview');
+    
+    if (totalChangesetsEl) {
+        animateValue('totalChangesets', 0, stats.total_changesets, 1000);
+    }
+    if (totalChangesEl) {
+        animateValue('totalChanges', 0, stats.total_changes, 1000);
+    }
+    if (changesetsNeedingReviewEl) {
+        animateValue('changesetsNeedingReview', 0, stats.validation?.needs_review || 0, 1000);
+    }
 }
 
 // Update changesets list
@@ -736,6 +741,13 @@ function escapeHtml(text) {
 
 function animateValue(id, start, end, duration) {
     const element = document.getElementById(id);
+    
+    // Check if element exists before animating
+    if (!element) {
+        console.warn(`⚠️ Element with id '${id}' not found for animation`);
+        return;
+    }
+    
     const range = end - start;
     const increment = range / (duration / 16); // 60fps
     let current = start;
@@ -1170,12 +1182,15 @@ function initTabs() {
             this.classList.add('active');
             document.getElementById(targetTab).classList.add('active');
 
-            // Hide/show stats grid based on tab
-            const container = document.querySelector('.container');
-            if (targetTab === 'atlas-ai') {
-                container.classList.add('hide-stats');
+            // Show stats only on dashboard tab
+            const dashboardStats = document.getElementById('dashboardStats');
+            const dashboardTimeRange = document.getElementById('dashboardTimeRange');
+            if (targetTab === 'dashboard') {
+                if (dashboardStats) dashboardStats.style.display = 'grid';
+                if (dashboardTimeRange) dashboardTimeRange.style.display = 'flex';
             } else {
-                container.classList.remove('hide-stats');
+                if (dashboardStats) dashboardStats.style.display = 'none';
+                if (dashboardTimeRange) dashboardTimeRange.style.display = 'none';
             }
 
             // Load specific tab content
