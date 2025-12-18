@@ -157,6 +157,85 @@ function applyFilters() {
     updateMap(filtered);
 }
 
+// Singapore boundary visibility state
+let singaporeBoundaryVisible = false;
+let singaporePolygonLayer = null;
+let dashboardPolygonLayer = null;
+
+// Singapore boundary polygon coordinates [lat, lon] for Leaflet
+// Custom polygon from geojson.io - accurate Singapore coastline
+const SINGAPORE_BOUNDARY = [
+    [1.4374204305910894, 103.68206176671208],
+    [1.4285151679417964, 103.67276286043511],
+    [1.416537060450807, 103.66830637387295],
+    [1.4110234655300502, 103.66359851373443],
+    [1.4008739119261122, 103.65645502631492],
+    [1.3863582521087778, 103.65157778084335],
+    [1.380092164482889, 103.64848249116358],
+    [1.374053214919627, 103.64619415008514],
+    [1.355513484947764, 103.63527235720085],
+    [1.3495865471648756, 103.6326287206494],
+    [1.3209718317900752, 103.61600327820832],
+    [1.2829972828841392, 103.60344510451301],
+    [1.2803135891116284, 103.60144936850588],
+    [1.2635218264087626, 103.57740732831513],
+    [1.1943307648203358, 103.56523522923226],
+    [1.1868527612518562, 103.6402076218406],
+    [1.1850262155549842, 103.65991878234365],
+    [1.1791455797026913, 103.6708555340773],
+    [1.1489442597735717, 103.71441701594091],
+    [1.130390588109762, 103.74079127418872],
+    [1.159946506462191, 103.78704071859727],
+    [1.1714133667868225, 103.80498725868085],
+    [1.1881129758843798, 103.84216912343902],
+    [1.1959892693859189, 103.85985532313777],
+    [1.2073427425893328, 103.88105151800545],
+    [1.2238404373376284, 103.92139937026343],
+    [1.266596358685348, 104.03684272280378],
+    [1.2697730050282843, 104.13126741616901],
+    [1.3570197805668442, 104.0814591330859],
+    [1.3690605445553814, 104.08382725499087],
+    [1.393720869608842, 104.09291474983172],
+    [1.399163580098346, 104.09373613093112],
+    [1.4062378819988197, 104.09331533570213],
+    [1.412888983208063, 104.09134418977862],
+    [1.4176835488809445, 104.08917899644018],
+    [1.4307948743288819, 104.07772682493072],
+    [1.4349972492461376, 104.07253387047615],
+    [1.4467388769547256, 104.04032159816978],
+    [1.4423195754761196, 104.02191680629886],
+    [1.4286528759047172, 104.00120540762356],
+    [1.4252380071795159, 103.99398246420247],
+    [1.4245198599390392, 103.9802031176776],
+    [1.422420192817114, 103.9720596368071],
+    [1.4222952902766508, 103.96651303737002],
+    [1.4244470435201322, 103.96101278691481],
+    [1.4250380010241201, 103.95472777048747],
+    [1.4275811841350503, 103.94321259051571],
+    [1.43048546961505, 103.93758079952084],
+    [1.4296998941527903, 103.93244761660071],
+    [1.4274778118911229, 103.92044156575355],
+    [1.428318230089758, 103.89886836575641],
+    [1.434740785422406, 103.88616150622721],
+    [1.4563465760880803, 103.86829439397985],
+    [1.4626364498582376, 103.8587510408729],
+    [1.4728369612134742, 103.83532893291158],
+    [1.478827754692162, 103.8119667565141],
+    [1.4766679071910715, 103.80346095871982],
+    [1.4676932356154566, 103.79388231869814],
+    [1.4532715864175145, 103.77043499278165],
+    [1.448669405670941, 103.76063365666334],
+    [1.4510819110808342, 103.74495786540905],
+    [1.453923016011771, 103.73999991717727],
+    [1.455211901468246, 103.73901608792534],
+    [1.4600287258219815, 103.72823228744282],
+    [1.4581304288291577, 103.71389869522139],
+    [1.4510904722500193, 103.70359187764298],
+    [1.4444822745957655, 103.69726984749266],
+    [1.441055926623176, 103.69209246150241],
+    [1.4374204305910894, 103.68206176671208],
+];
+
 // Initialize Leaflet map
 function initMap() {
     console.log('🗺️ Initializing map...');
@@ -173,6 +252,28 @@ function initMap() {
         maxZoom: 19,
         subdomains: 'abcd'
     }).addTo(map);
+
+    // Create a custom pane for the Singapore boundary to ensure visibility
+    map.createPane('boundaryPane');
+    map.getPane('boundaryPane').style.zIndex = 650;
+    
+    // Create Singapore boundary polygon (hidden by default)
+    singaporePolygonLayer = L.polygon(SINGAPORE_BOUNDARY, {
+        color: '#dc2626',
+        weight: 3,
+        opacity: 0.9,
+        fillColor: '#dc2626',
+        fillOpacity: 0.05,
+        interactive: false,
+        pane: 'boundaryPane'
+    });
+    // Don't add to map initially - user can toggle it
+    
+    // Fit map to Singapore bounds and restrict panning
+    map.fitBounds(singaporePolygonLayer.getBounds(), { padding: [20, 20] });
+    map.setMaxBounds(singaporePolygonLayer.getBounds().pad(0.2));
+    map.setMinZoom(10);
+    console.log('✅ Singapore boundary polygon ready (hidden by default)');
 
     // Initialize marker cluster group
     markerCluster = L.markerClusterGroup({
@@ -196,6 +297,46 @@ function initMap() {
     map.addLayer(markerCluster);
     console.log('✅ Marker cluster initialized');
 }
+
+// Toggle Singapore boundary polygon visibility
+function toggleSingaporeBoundary() {
+    singaporeBoundaryVisible = !singaporeBoundaryVisible;
+    
+    // Toggle on main map
+    if (map && singaporePolygonLayer) {
+        if (singaporeBoundaryVisible) {
+            singaporePolygonLayer.addTo(map);
+        } else {
+            map.removeLayer(singaporePolygonLayer);
+        }
+    }
+    
+    // Toggle on dashboard map
+    if (typeof dashboardMap !== 'undefined' && dashboardMap && dashboardPolygonLayer) {
+        if (singaporeBoundaryVisible) {
+            dashboardPolygonLayer.addTo(dashboardMap);
+        } else {
+            dashboardMap.removeLayer(dashboardPolygonLayer);
+        }
+    }
+    
+    // Update all toggle buttons
+    const buttonText = singaporeBoundaryVisible ? 'Hide Boundary' : 'Show Boundary';
+    const buttonTitle = singaporeBoundaryVisible ? 'Hide Singapore boundary' : 'Show Singapore boundary';
+    
+    ['boundaryToggleBtn', 'dashboardBoundaryToggleBtn'].forEach(btnId => {
+        const btn = document.getElementById(btnId);
+        if (btn) {
+            btn.classList.toggle('active', singaporeBoundaryVisible);
+            btn.title = buttonTitle;
+            const span = btn.querySelector('span');
+            if (span) span.textContent = buttonText;
+        }
+    });
+    
+    console.log(`🗺️ Singapore boundary ${singaporeBoundaryVisible ? 'shown' : 'hidden'}`);
+}
+
 // Initialize My Edits map
 function initMyEditsMap() {
     if (myEditsMap) {
@@ -212,6 +353,30 @@ function initMyEditsMap() {
         maxZoom: 19,
         subdomains: 'abcd'
     }).addTo(myEditsMap);
+
+    // Create a custom pane for the Singapore boundary to ensure visibility
+    myEditsMap.createPane('boundaryPane');
+    myEditsMap.getPane('boundaryPane').style.zIndex = 650;
+    
+    // Create Singapore boundary polygon for myEditsMap (hidden by default, shared visibility state)
+    const myEditsPolygon = L.polygon(SINGAPORE_BOUNDARY, {
+        color: '#dc2626',
+        weight: 3,
+        opacity: 0.9,
+        fillColor: '#dc2626',
+        fillOpacity: 0.05,
+        interactive: false,
+        pane: 'boundaryPane'
+    });
+    // Add if boundary is currently visible
+    if (singaporeBoundaryVisible) {
+        myEditsPolygon.addTo(myEditsMap);
+    }
+    
+    // Fit map to Singapore bounds and restrict panning
+    myEditsMap.fitBounds(myEditsPolygon.getBounds(), { padding: [20, 20] });
+    myEditsMap.setMaxBounds(myEditsPolygon.getBounds().pad(0.2));
+    myEditsMap.setMinZoom(10);
 
     // Initialize marker cluster group
     myEditsMarkerCluster = L.markerClusterGroup({
@@ -1109,14 +1274,6 @@ async function loadMyEdits() {
                                 <polyline points="8 6 2 12 8 18"></polyline>
                             </svg>
                             Compare
-                        </button>
-                        <button class="ai-btn" onclick="visualizeChangesetOnMyEditsMap('${cs.id}')" title="Atlas Intelligence: Visualize changeset on map">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <circle cx="12" cy="12" r="10"></circle>
-                                <path d="M2 12h20"></path>
-                                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-                            </svg>
-                            <span class="ai-btn-text">AI</span>
                         </button>
                         <a href="https://osmcha.org/changesets/${cs.id}" target="_blank" class="osmcha-btn" title="Analyze in OSMCha">
                             OSMCha

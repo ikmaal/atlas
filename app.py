@@ -10,12 +10,18 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache
 import secrets
 import os
+import sys
 import json
 import base64
 import uuid
+
+# Fix Windows console encoding for emojis
+if sys.platform == 'win32':
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 from werkzeug.utils import secure_filename
 import gspread
 from google.oauth2.service_account import Credentials
+from shapely.geometry import Point, Polygon, MultiPolygon
 
 app = Flask(__name__)
 CORS(app)
@@ -124,6 +130,9 @@ def cleanup_expired_states():
         print(f"🧹 Cleaned up {len(expired)} expired OAuth states")
         save_oauth_states(oauth_states)  # Persist after cleanup
 
+# Clean up any expired states on startup
+cleanup_expired_states()
+
 # Debug: Print OAuth config on startup
 print(f"🔧 OAuth Configuration:")
 print(f"   Client ID: {OSM_CLIENT_ID[:20] if OSM_CLIENT_ID != 'YOUR_CLIENT_ID_HERE' else '❌ NOT SET'}...")
@@ -134,17 +143,89 @@ print(f"⚠️  IMPORTANT: Access your app at {OSM_REDIRECT_URI.rsplit('/oauth/c
 print(f"   (Don't use 127.0.0.1 if your redirect URI uses localhost, or vice versa)")
 print(f"")
 
-# Singapore bounding box (tightened to exclude Malaysian areas like Iskandar Puteri)
+# Singapore bounding box for OSM API queries (still needed for initial API fetch)
 # Format: min_lon, min_lat, max_lon, max_lat
-SINGAPORE_BBOX = "103.60,1.16,104.04,1.465"
+# Updated to match the custom polygon bounds
+SINGAPORE_BBOX = "103.56,1.13,104.14,1.48"
 
-# Singapore bounding box as floats for filtering
-SINGAPORE_BBOX_COORDS = {
-    'min_lon': 103.60,   # Slightly tighter western boundary
-    'min_lat': 1.16,      # Slightly higher southern boundary
-    'max_lon': 104.04,    # Slightly tighter eastern boundary
-    'max_lat': 1.465      # Reduced significantly to exclude Johor/Malaysia
-}
+# Singapore polygon coordinates for accurate boundary filtering
+# Custom polygon from geojson.io - accurate Singapore coastline
+# Coordinates are in [longitude, latitude] format for Shapely
+SINGAPORE_POLYGON_COORDS = [
+    (103.68206176671208, 1.4374204305910894),
+    (103.67276286043511, 1.4285151679417964),
+    (103.66830637387295, 1.416537060450807),
+    (103.66359851373443, 1.4110234655300502),
+    (103.65645502631492, 1.4008739119261122),
+    (103.65157778084335, 1.3863582521087778),
+    (103.64848249116358, 1.380092164482889),
+    (103.64619415008514, 1.374053214919627),
+    (103.63527235720085, 1.355513484947764),
+    (103.6326287206494, 1.3495865471648756),
+    (103.61600327820832, 1.3209718317900752),
+    (103.60344510451301, 1.2829972828841392),
+    (103.60144936850588, 1.2803135891116284),
+    (103.57740732831513, 1.2635218264087626),
+    (103.56523522923226, 1.1943307648203358),
+    (103.6402076218406, 1.1868527612518562),
+    (103.65991878234365, 1.1850262155549842),
+    (103.6708555340773, 1.1791455797026913),
+    (103.71441701594091, 1.1489442597735717),
+    (103.74079127418872, 1.130390588109762),
+    (103.78704071859727, 1.159946506462191),
+    (103.80498725868085, 1.1714133667868225),
+    (103.84216912343902, 1.1881129758843798),
+    (103.85985532313777, 1.1959892693859189),
+    (103.88105151800545, 1.2073427425893328),
+    (103.92139937026343, 1.2238404373376284),
+    (104.03684272280378, 1.266596358685348),
+    (104.13126741616901, 1.2697730050282843),
+    (104.0814591330859, 1.3570197805668442),
+    (104.08382725499087, 1.3690605445553814),
+    (104.09291474983172, 1.393720869608842),
+    (104.09373613093112, 1.399163580098346),
+    (104.09331533570213, 1.4062378819988197),
+    (104.09134418977862, 1.412888983208063),
+    (104.08917899644018, 1.4176835488809445),
+    (104.07772682493072, 1.4307948743288819),
+    (104.07253387047615, 1.4349972492461376),
+    (104.04032159816978, 1.4467388769547256),
+    (104.02191680629886, 1.4423195754761196),
+    (104.00120540762356, 1.4286528759047172),
+    (103.99398246420247, 1.4252380071795159),
+    (103.9802031176776, 1.4245198599390392),
+    (103.9720596368071, 1.422420192817114),
+    (103.96651303737002, 1.4222952902766508),
+    (103.96101278691481, 1.4244470435201322),
+    (103.95472777048747, 1.4250380010241201),
+    (103.94321259051571, 1.4275811841350503),
+    (103.93758079952084, 1.43048546961505),
+    (103.93244761660071, 1.4296998941527903),
+    (103.92044156575355, 1.4274778118911229),
+    (103.89886836575641, 1.428318230089758),
+    (103.88616150622721, 1.434740785422406),
+    (103.86829439397985, 1.4563465760880803),
+    (103.8587510408729, 1.4626364498582376),
+    (103.83532893291158, 1.4728369612134742),
+    (103.8119667565141, 1.478827754692162),
+    (103.80346095871982, 1.4766679071910715),
+    (103.79388231869814, 1.4676932356154566),
+    (103.77043499278165, 1.4532715864175145),
+    (103.76063365666334, 1.448669405670941),
+    (103.74495786540905, 1.4510819110808342),
+    (103.73999991717727, 1.453923016011771),
+    (103.73901608792534, 1.455211901468246),
+    (103.72823228744282, 1.4600287258219815),
+    (103.71389869522139, 1.4581304288291577),
+    (103.70359187764298, 1.4510904722500193),
+    (103.69726984749266, 1.4444822745957655),
+    (103.69209246150241, 1.441055926623176),
+    (103.68206176671208, 1.4374204305910894),
+]
+
+# Create Shapely polygon for accurate point-in-polygon checks
+SINGAPORE_POLYGON = Polygon(SINGAPORE_POLYGON_COORDS)
+print(f"🗺️  Singapore polygon initialized with {len(SINGAPORE_POLYGON_COORDS)} vertices")
 
 # Time range for fetching changesets (in hours)
 CHANGESET_TIME_RANGE_HOURS = int(os.environ.get('CHANGESET_TIME_RANGE_HOURS', '24'))
@@ -431,8 +512,9 @@ VALIDATION_THRESHOLDS = {
 
 def is_changeset_in_singapore(changeset):
     """
-    Check if a changeset is primarily within Singapore.
-    Returns True if the changeset's center point is within Singapore bounds.
+    Check if a changeset is primarily within Singapore using polygon-based filtering.
+    Returns True if the changeset's center point is within Singapore's actual boundaries.
+    This is more accurate than rectangular bounding box and excludes Malaysian areas.
     """
     bbox = changeset.get('bbox')
     
@@ -445,9 +527,10 @@ def is_changeset_in_singapore(changeset):
     center_lat = (bbox['min_lat'] + bbox['max_lat']) / 2
     center_lon = (bbox['min_lon'] + bbox['max_lon']) / 2
     
-    # Check if center point is within Singapore bounds
-    is_within = (SINGAPORE_BBOX_COORDS['min_lon'] <= center_lon <= SINGAPORE_BBOX_COORDS['max_lon'] and
-                 SINGAPORE_BBOX_COORDS['min_lat'] <= center_lat <= SINGAPORE_BBOX_COORDS['max_lat'])
+    # Create a Shapely Point and check if it's within Singapore polygon
+    # Note: Shapely uses (longitude, latitude) order
+    point = Point(center_lon, center_lat)
+    is_within = SINGAPORE_POLYGON.contains(point)
     
     return is_within
 
@@ -1523,17 +1606,23 @@ def oauth_callback():
     
     # Verify state exists in server-side storage
     if not received_state or received_state not in oauth_states:
+        # Get stored state prefixes for debugging
+        stored_states = [state[:20] + '...' for state in oauth_states.keys()]
+        
         error_msg = {
             'error': 'Invalid state parameter',
             'debug': {
                 'received_state_prefix': received_state[:20] if received_state else 'None',
                 'state_exists': received_state in oauth_states if received_state else False,
                 'active_states_count': len(oauth_states),
-                'hint': 'State not found in server storage. It may have expired (10 min timeout) or is invalid.'
+                'stored_state_prefixes': stored_states if stored_states else 'No states in storage',
+                'hint': 'State not found in server storage. It may have expired (10 min timeout), already been used, or you are reusing an old callback URL. Please click "Login with OSM" again to start a fresh login.'
             }
         }
         print(f"❌ State validation failed!")
+        print(f"   Received state: {received_state if received_state else 'None'}")
         print(f"   State in storage: {received_state in oauth_states if received_state else False}")
+        print(f"   Stored states: {stored_states}")
         return jsonify(error_msg), 400
     
     # State is valid - remove it (one-time use)
@@ -1681,10 +1770,12 @@ def get_user_changesets():
     
     try:
         # Fetch changesets for this user in Singapore
+        # Use a longer time range (30 days) for user's own edits
         url = "https://api.openstreetmap.org/api/0.6/changesets"
         
         end_time = datetime.now(timezone.utc)
-        start_time = end_time - timedelta(hours=CHANGESET_TIME_RANGE_HOURS)
+        MY_EDITS_TIME_RANGE_DAYS = 365  # Show user's edits from last year
+        start_time = end_time - timedelta(days=MY_EDITS_TIME_RANGE_DAYS)
         
         params = {
             'user': user_id,
@@ -1739,14 +1830,17 @@ def get_user_changesets():
         
         changesets.sort(key=lambda x: x['created_at'], reverse=True)
         
+        print(f"📊 My Edits: Found {len(changesets)} changesets for user {session['user'].get('display_name', user_id)} in Singapore (last 30 days)")
+        
         return jsonify({
             'success': True,
             'count': len(changesets),
-            'changesets': changesets
+            'changesets': changesets,
+            'time_range': '30 days'
         })
         
     except Exception as e:
-        print(f"Error fetching user changesets: {e}")
+        print(f"❌ Error fetching user changesets: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -3191,128 +3285,153 @@ def atlas_ai_chat():
 
 
 def analyze_image_with_ai(image_path, message, context):
-    """Analyze image using AI vision capabilities"""
+    """Handle image uploads - Groq doesn't support vision, provide helpful response"""
     
-    # OPTION 1: OpenAI GPT-4 Vision (Recommended)
-    # Uncomment and configure with your API key
-    """
-    import openai
-    import base64
+    # Get the filename for reference
+    filename = os.path.basename(image_path) if image_path else "uploaded image"
     
-    openai.api_key = os.environ.get('OPENAI_API_KEY')
-    
-    # Read and encode image
-    with open(image_path, 'rb') as img_file:
-        image_data = base64.b64encode(img_file.read()).decode('utf-8')
-    
-    response = openai.ChatCompletion.create(
-        model="gpt-4-vision-preview",
-        messages=[
-            {
-                "role": "system",
-                "content": "You are Atlas, an expert OpenStreetMap assistant. Analyze images of maps, changesets, and geographic data."
-            },
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": message or "Analyze this image in the context of OpenStreetMap"},
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_data}"}}
-                ]
-            }
-        ],
-        max_tokens=1000
-    )
-    return response.choices[0].message.content
-    """
-    
-    # OPTION 2: Anthropic Claude with Vision
-    # Uncomment and configure with your API key
-    """
-    import anthropic
-    import base64
-    
-    client = anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
-    
-    # Read and encode image
-    with open(image_path, 'rb') as img_file:
-        image_data = base64.b64encode(img_file.read()).decode('utf-8')
-    
-    message = client.messages.create(
-        model="claude-3-sonnet-20240229",
-        max_tokens=1024,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "image/jpeg",
-                            "data": image_data,
-                        },
-                    },
-                    {
-                        "type": "text",
-                        "text": message or "Analyze this image in the context of OpenStreetMap"
-                    }
-                ],
-            }
-        ],
-    )
-    return message.content[0].text
-    """
-    
-    # OPTION 3: Google Gemini Vision
-    # Uncomment and configure with your API key
-    """
-    import google.generativeai as genai
-    from PIL import Image
-    
-    genai.configure(api_key=os.environ.get('GOOGLE_API_KEY'))
-    model = genai.GenerativeModel('gemini-pro-vision')
-    
-    img = Image.open(image_path)
-    response = model.generate_content([message or "Analyze this OpenStreetMap image", img])
-    return response.text
-    """
-    
-    # PLACEHOLDER: Basic image analysis (replace with real AI service)
-    # This is a fallback response when no AI service is configured
-    return f"""## Image Analysis
+    return f"""## 📸 Image Received!
 
-I can see you've uploaded an image! 📸
+I've received your image: **{filename}**
 
-To enable full AI-powered image analysis, you need to configure one of these services:
+Your message: "{message or 'No message provided'}"
 
-### 🤖 **Recommended AI Vision Services:**
+---
 
-1. **OpenAI GPT-4 Vision** (Best for detailed analysis)
-   - Set `OPENAI_API_KEY` environment variable
-   - Uncomment the OpenAI code in `analyze_image_with_ai()`
+### ℹ️ About Image Analysis
 
-2. **Anthropic Claude with Vision** (Great for maps)
-   - Set `ANTHROPIC_API_KEY` environment variable
-   - Uncomment the Claude code in `analyze_image_with_ai()`
+Currently, Atlas AI uses **Groq** which provides lightning-fast text responses but doesn't support image analysis yet.
 
-3. **Google Gemini Vision** (Free tier available)
-   - Set `GOOGLE_API_KEY` environment variable
-   - Uncomment the Gemini code in `analyze_image_with_ai()`
+### 🛠️ What I Can Help With Instead:
 
-### 📝 **Your Message:**
-"{message or 'Analyze this image'}"
+**Without seeing the image, I can still assist if you describe what you're looking at:**
 
-### 🎯 **What I Could Help With (Once Configured):**
-- Identify map features and elements
-- Analyze changeset screenshots
-- Detect tagging issues
-- Review geometry problems
-- Explain validation errors
-- Compare before/after images
+1. **Describe the issue** - Tell me what you see in the changeset or map
+2. **Share changeset ID** - I can analyze changeset data directly: "Analyze changeset 12345678"
+3. **Ask about tagging** - "How should I tag a building with shops on ground floor?"
+4. **Validation questions** - "What does 'Needs Review' mean?"
 
-**Configuration is easy!** Just uncomment one of the AI service options in the code and add your API key.
+### 💡 Pro Tip
 
-Would you like help with a specific OpenStreetMap question instead?"""
+For visual changeset comparison, use the **Compare** button in the dashboard - it shows before/after maps with color-coded changes!
+
+---
+
+**How can I help you with your mapping question?**"""
+
+
+def generate_groq_text_response(message, context):
+    """Generate AI response using Groq for text-only queries"""
+    from groq import Groq
+    
+    # Check if API key is configured
+    api_key = os.environ.get('GROQ_API_KEY')
+    if not api_key:
+        return f"""Thanks for your message! I'm here to help with OpenStreetMap and this dashboard.
+
+You asked: "{message}"
+
+**Note:** For AI-powered responses, configure the `GROQ_API_KEY` environment variable.
+Get your free API key at: https://console.groq.com
+
+I can still assist you with:
+• **Changeset analysis**: "Analyze changeset 12345678"
+• **Compare changes**: "Compare changeset 12345678"
+• **OSM tagging** guidelines
+• **Dashboard features** and navigation
+
+What specific aspect would you like to know more about?"""
+    
+    try:
+        # Initialize Groq client
+        client = Groq(api_key=api_key)
+        
+        # System prompt for Atlas AI
+        system_prompt = """You are Atlas, an AI assistant for OpenStreetMap (OSM) integrated into the ATLAS Dashboard - a Singapore OpenStreetMap monitoring tool.
+
+Your expertise includes:
+- OpenStreetMap tagging conventions and best practices
+- Changeset analysis and quality control
+- Singapore-specific mapping knowledge
+- Geographic data and GIS concepts
+- OSM editor tools (iD, JOSM, etc.)
+- Community guidelines and contribution standards
+
+Response guidelines:
+- Be concise but helpful
+- Use markdown formatting
+- Provide actionable advice
+- Reference OSM Wiki when appropriate
+- For Singapore-specific questions, consider local context
+
+Dashboard features you can help explain:
+- Real-time changeset monitoring for Singapore
+- Validation status (Valid, Needs Review)
+- Map visualization with clustering
+- Changeset comparison tool
+- My Edits section for personal contributions
+- Team collaboration features"""
+
+        # Add context about the user if available
+        user_context = ""
+        if context:
+            if context.get('username'):
+                user_context += f"\nUser: {context.get('username')}"
+            if context.get('changeset_id'):
+                user_context += f"\nCurrent changeset: {context.get('changeset_id')}"
+        
+        full_system_prompt = f"{system_prompt}{user_context}"
+        
+        # Generate response using Groq
+        chat_completion = client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": full_system_prompt},
+                {"role": "user", "content": message}
+            ],
+            model="llama-3.1-8b-instant",  # Fast and capable model
+            temperature=0.7,
+            max_tokens=1024,
+        )
+        
+        response_text = chat_completion.choices[0].message.content
+        
+        if not response_text:
+            return "I couldn't generate a response. Please try rephrasing your question."
+        
+        return response_text
+        
+    except Exception as e:
+        error_msg = str(e)
+        print(f"❌ Groq API Error: {error_msg}")
+        app.logger.error(f"Groq text response error: {error_msg}")
+        
+        # Check for common error types and provide helpful messages
+        if "invalid_api_key" in error_msg.lower() or "authentication" in error_msg.lower():
+            return f"""## ⚠️ Groq API Key Error
+
+Your Groq API key appears to be invalid or expired.
+
+**To fix this:**
+1. Go to https://console.groq.com
+2. Generate a new API key
+3. Update `GROQ_API_KEY` in `run.ps1`
+4. Restart the server
+
+Error: {error_msg}"""
+        
+        return f"""Thanks for your message! I encountered an issue generating an AI response.
+
+You asked: "{message}"
+
+**Error:** {error_msg}
+
+I can still help with:
+• **Changeset analysis**: "Analyze changeset 12345678"
+• **Compare changes**: "Compare changeset 12345678"  
+• **Tagging guidelines**: "How to tag roads"
+• **Validation help**: "What is validation"
+
+Please try one of these specific commands or rephrase your question."""
 
 
 def generate_atlas_response(message, context):
@@ -3433,8 +3552,8 @@ Keep up the great mapping work! 🗺️"""
 
 Log in with your OSM account to see your edits!"""
     
-    # General Help
-    elif any(word in message_lower for word in ['help', 'what can you', 'how', 'guide']):
+    # General Help - Only match specific help requests
+    elif any(phrase in message_lower for phrase in ['what can you do', 'what can you help', 'help me', 'how do you work', 'guide me']):
         return """I'm **Atlas**, your AI assistant for OpenStreetMap! I can help with:
 
 🗺️ **Mapping Guidance**
@@ -3464,19 +3583,9 @@ Log in with your OSM account to see your edits!"""
 
 What would you like to know more about?"""
     
-    # Default response
+    # Default response - Use Groq AI for general questions
     else:
-        return f"""Thanks for your message! I'm here to help with OpenStreetMap and this dashboard.
-
-You asked: "{message}"
-
-I can assist you with:
-• **Changeset analysis** and validation
-• **OSM tagging** guidelines
-• **Dashboard features** and navigation
-• **Team collaboration** tips
-
-Could you provide more details about what you'd like to know?"""
+        return generate_groq_text_response(message, context)
 
 
 # Health check endpoint for uptime monitoring

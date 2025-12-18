@@ -3,6 +3,71 @@
 // Store selected image
 let atlasSelectedImage = null;
 
+// Initialize Atlas AI greeting
+function initAtlasGreeting() {
+    const greetingEl = document.getElementById('atlasGreeting');
+    if (!greetingEl) return;
+    
+    const hour = new Date().getHours();
+    let greeting;
+    
+    if (hour < 12) {
+        greeting = 'Good Morning';
+    } else if (hour < 17) {
+        greeting = 'Good Afternoon';
+    } else {
+        greeting = 'Good Evening';
+    }
+    
+    greetingEl.textContent = greeting;
+}
+
+// Show chat screen and hide welcome screen
+function showChatScreen() {
+    const welcomeScreen = document.getElementById('atlasWelcomeScreen');
+    const chatScreen = document.getElementById('atlasChatScreen');
+    
+    if (welcomeScreen) welcomeScreen.style.display = 'none';
+    if (chatScreen) chatScreen.style.display = 'flex';
+}
+
+// Reset chat and show welcome screen
+function resetAtlasChat() {
+    const welcomeScreen = document.getElementById('atlasWelcomeScreen');
+    const chatScreen = document.getElementById('atlasChatScreen');
+    const messagesContainer = document.getElementById('atlasAIMessages');
+    
+    if (welcomeScreen) welcomeScreen.style.display = 'flex';
+    if (chatScreen) chatScreen.style.display = 'none';
+    if (messagesContainer) messagesContainer.innerHTML = '';
+    
+    // Reset image
+    removeAtlasImage();
+    
+    // Refresh greeting
+    initAtlasGreeting();
+}
+
+// Handle Enter key press in chat input
+function handleAtlasChatKeyPress(event) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        sendAtlasChatMessage();
+    }
+}
+
+// Send message from chat screen input
+async function sendAtlasChatMessage() {
+    const chatInput = document.getElementById('atlasAIChatInput');
+    if (!chatInput) return;
+    
+    const message = chatInput.value.trim();
+    if (!message && !atlasSelectedImage) return;
+    
+    chatInput.value = '';
+    await sendAtlasMessageInternal(message);
+}
+
 // Handle image selection
 function handleAtlasImageSelect(event) {
     const file = event.target.files[0];
@@ -32,15 +97,20 @@ function handleAtlasImageSelect(event) {
     reader.readAsDataURL(file);
     
     // Update placeholder
-    document.getElementById('atlasAIInput').placeholder = 'Ask Atlas about this image...';
+    const mainInput = document.getElementById('atlasAIInput');
+    if (mainInput) mainInput.placeholder = 'Ask about this image...';
 }
 
 // Remove selected image
 function removeAtlasImage() {
     atlasSelectedImage = null;
-    document.getElementById('atlasAIImagePreview').style.display = 'none';
-    document.getElementById('atlasAIImageInput').value = '';
-    document.getElementById('atlasAIInput').placeholder = 'Ask Atlas anything about OpenStreetMap...';
+    const imagePreview = document.getElementById('atlasAIImagePreview');
+    const imageInput = document.getElementById('atlasAIImageInput');
+    const mainInput = document.getElementById('atlasAIInput');
+    
+    if (imagePreview) imagePreview.style.display = 'none';
+    if (imageInput) imageInput.value = '';
+    if (mainInput) mainInput.placeholder = 'Ask AI a question or make a request...';
 }
 
 // Handle Enter key press
@@ -51,36 +121,39 @@ function handleAtlasKeyPress(event) {
     }
 }
 
-// Send message to Atlas AI
+// Send message to Atlas AI (from welcome screen)
 async function sendAtlasMessage(predefinedMessage = null) {
     const input = document.getElementById('atlasAIInput');
-    const sendBtn = document.getElementById('atlasAISendBtn');
-    const messagesContainer = document.getElementById('atlasAIMessages');
-    const suggestionsContainer = document.getElementById('atlasAISuggestions');
-    
-    const message = predefinedMessage || input.value.trim();
+    const message = predefinedMessage || (input ? input.value.trim() : '');
     
     // Require either message or image
     if (!message && !atlasSelectedImage) return;
     
-    // Hide suggestions after first message
-    if (predefinedMessage || input.value || atlasSelectedImage) {
-        suggestionsContainer.style.display = 'none';
-    }
+    // Clear input
+    if (input) input.value = '';
+    
+    // Switch to chat view
+    showChatScreen();
+    
+    // Send the message
+    await sendAtlasMessageInternal(message);
+}
+
+// Internal function to send message to Atlas AI
+async function sendAtlasMessageInternal(message) {
+    const sendBtn = document.getElementById('atlasAISendBtn');
+    const chatSendBtn = document.getElementById('atlasAIChatSendBtn');
     
     // Store image reference for display
     const imageToDisplay = atlasSelectedImage;
     const imagePreviewSrc = imageToDisplay ? document.getElementById('atlasPreviewImage').src : null;
     
-    // Clear input and image
-    input.value = '';
-    input.style.height = 'auto';
-    
     // Add user message (with image if present)
     addAtlasMessage('user', message || 'Can you analyze this image?', imagePreviewSrc);
     
-    // Disable send button
-    sendBtn.disabled = true;
+    // Disable send buttons
+    if (sendBtn) sendBtn.disabled = true;
+    if (chatSendBtn) chatSendBtn.disabled = true;
     
     // Show loading indicator
     const loadingId = showAtlasLoading();
@@ -140,8 +213,9 @@ async function sendAtlasMessage(predefinedMessage = null) {
         addAtlasMessage('assistant', 'I apologize, but I encountered an error. Please try again later.');
     }
     
-    // Re-enable send button
-    sendBtn.disabled = false;
+    // Re-enable send buttons
+    if (sendBtn) sendBtn.disabled = false;
+    if (chatSendBtn) chatSendBtn.disabled = false;
 }
 
 // Add message to chat
@@ -271,13 +345,25 @@ function getCurrentUsername() {
     return userNameEl ? userNameEl.textContent : null;
 }
 
-// Auto-resize textarea
+// Initialize Atlas AI on page load
 document.addEventListener('DOMContentLoaded', () => {
+    // Initialize greeting
+    initAtlasGreeting();
+    
+    // Auto-resize textarea (if using textarea)
     const textarea = document.getElementById('atlasAIInput');
-    if (textarea) {
+    if (textarea && textarea.tagName === 'TEXTAREA') {
         textarea.addEventListener('input', function() {
             this.style.height = 'auto';
             this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+        });
+    }
+    
+    // Also initialize greeting when user logs in (tab becomes visible)
+    const atlasAITab = document.querySelector('[data-tab="atlas-ai"]');
+    if (atlasAITab) {
+        atlasAITab.addEventListener('click', () => {
+            setTimeout(initAtlasGreeting, 100);
         });
     }
 });

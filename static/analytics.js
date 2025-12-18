@@ -403,6 +403,33 @@ function initializeDashboardMap() {
         maxZoom: 19
     }).addTo(dashboardMap);
     
+    // Create a custom pane for the Singapore boundary to ensure visibility
+    dashboardMap.createPane('boundaryPane');
+    dashboardMap.getPane('boundaryPane').style.zIndex = 650;
+    
+    // Create Singapore boundary polygon (hidden by default, uses SINGAPORE_BOUNDARY from script.js)
+    if (typeof SINGAPORE_BOUNDARY !== 'undefined') {
+        dashboardPolygonLayer = L.polygon(SINGAPORE_BOUNDARY, {
+            color: '#dc2626',
+            weight: 3,
+            opacity: 0.9,
+            fillColor: '#dc2626',
+            fillOpacity: 0.05,
+            interactive: false,
+            pane: 'boundaryPane'
+        });
+        // Don't add to map initially - user can toggle it
+        // Add if boundary is currently visible
+        if (typeof singaporeBoundaryVisible !== 'undefined' && singaporeBoundaryVisible) {
+            dashboardPolygonLayer.addTo(dashboardMap);
+        }
+        
+        // Set max bounds and min zoom
+        dashboardMap.setMaxBounds(dashboardPolygonLayer.getBounds().pad(0.2));
+        dashboardMap.setMinZoom(10);
+        console.log('✅ Singapore boundary polygon ready for dashboard map (hidden by default)');
+    }
+    
     // Initialize marker cluster
     dashboardMarkers = L.markerClusterGroup({
         maxClusterRadius: 50,
