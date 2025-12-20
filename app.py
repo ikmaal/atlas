@@ -143,89 +143,87 @@ print(f"⚠️  IMPORTANT: Access your app at {OSM_REDIRECT_URI.rsplit('/oauth/c
 print(f"   (Don't use 127.0.0.1 if your redirect URI uses localhost, or vice versa)")
 print(f"")
 
-# Singapore bounding box for OSM API queries (still needed for initial API fetch)
-# Format: min_lon, min_lat, max_lon, max_lat
-# Updated to match the custom polygon bounds
-SINGAPORE_BBOX = "103.56,1.13,104.14,1.48"
+# ============================================
+# Multi-Region Configuration
+# ============================================
 
-# Singapore polygon coordinates for accurate boundary filtering
-# Custom polygon from geojson.io - accurate Singapore coastline
-# Coordinates are in [longitude, latitude] format for Shapely
-SINGAPORE_POLYGON_COORDS = [
-    (103.68206176671208, 1.4374204305910894),
-    (103.67276286043511, 1.4285151679417964),
-    (103.66830637387295, 1.416537060450807),
-    (103.66359851373443, 1.4110234655300502),
-    (103.65645502631492, 1.4008739119261122),
-    (103.65157778084335, 1.3863582521087778),
-    (103.64848249116358, 1.380092164482889),
-    (103.64619415008514, 1.374053214919627),
-    (103.63527235720085, 1.355513484947764),
-    (103.6326287206494, 1.3495865471648756),
-    (103.61600327820832, 1.3209718317900752),
-    (103.60344510451301, 1.2829972828841392),
-    (103.60144936850588, 1.2803135891116284),
-    (103.57740732831513, 1.2635218264087626),
-    (103.56523522923226, 1.1943307648203358),
-    (103.6402076218406, 1.1868527612518562),
-    (103.65991878234365, 1.1850262155549842),
-    (103.6708555340773, 1.1791455797026913),
-    (103.71441701594091, 1.1489442597735717),
-    (103.74079127418872, 1.130390588109762),
-    (103.78704071859727, 1.159946506462191),
-    (103.80498725868085, 1.1714133667868225),
-    (103.84216912343902, 1.1881129758843798),
-    (103.85985532313777, 1.1959892693859189),
-    (103.88105151800545, 1.2073427425893328),
-    (103.92139937026343, 1.2238404373376284),
-    (104.03684272280378, 1.266596358685348),
-    (104.13126741616901, 1.2697730050282843),
-    (104.0814591330859, 1.3570197805668442),
-    (104.08382725499087, 1.3690605445553814),
-    (104.09291474983172, 1.393720869608842),
-    (104.09373613093112, 1.399163580098346),
-    (104.09331533570213, 1.4062378819988197),
-    (104.09134418977862, 1.412888983208063),
-    (104.08917899644018, 1.4176835488809445),
-    (104.07772682493072, 1.4307948743288819),
-    (104.07253387047615, 1.4349972492461376),
-    (104.04032159816978, 1.4467388769547256),
-    (104.02191680629886, 1.4423195754761196),
-    (104.00120540762356, 1.4286528759047172),
-    (103.99398246420247, 1.4252380071795159),
-    (103.9802031176776, 1.4245198599390392),
-    (103.9720596368071, 1.422420192817114),
-    (103.96651303737002, 1.4222952902766508),
-    (103.96101278691481, 1.4244470435201322),
-    (103.95472777048747, 1.4250380010241201),
-    (103.94321259051571, 1.4275811841350503),
-    (103.93758079952084, 1.43048546961505),
-    (103.93244761660071, 1.4296998941527903),
-    (103.92044156575355, 1.4274778118911229),
-    (103.89886836575641, 1.428318230089758),
-    (103.88616150622721, 1.434740785422406),
-    (103.86829439397985, 1.4563465760880803),
-    (103.8587510408729, 1.4626364498582376),
-    (103.83532893291158, 1.4728369612134742),
-    (103.8119667565141, 1.478827754692162),
-    (103.80346095871982, 1.4766679071910715),
-    (103.79388231869814, 1.4676932356154566),
-    (103.77043499278165, 1.4532715864175145),
-    (103.76063365666334, 1.448669405670941),
-    (103.74495786540905, 1.4510819110808342),
-    (103.73999991717727, 1.453923016011771),
-    (103.73901608792534, 1.455211901468246),
-    (103.72823228744282, 1.4600287258219815),
-    (103.71389869522139, 1.4581304288291577),
-    (103.70359187764298, 1.4510904722500193),
-    (103.69726984749266, 1.4444822745957655),
-    (103.69209246150241, 1.441055926623176),
-    (103.68206176671208, 1.4374204305910894),
-]
+# Load regions from JSON configuration file
+REGIONS_CONFIG_FILE = 'static/regions.json'
+REGIONS = {}
+REGION_POLYGONS = {}
+CURRENT_REGION = 'singapore'  # Default region
 
-# Create Shapely polygon for accurate point-in-polygon checks
-SINGAPORE_POLYGON = Polygon(SINGAPORE_POLYGON_COORDS)
-print(f"🗺️  Singapore polygon initialized with {len(SINGAPORE_POLYGON_COORDS)} vertices")
+def load_regions_config():
+    """Load region configurations from JSON file"""
+    global REGIONS, REGION_POLYGONS
+    try:
+        with open(REGIONS_CONFIG_FILE, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+            REGIONS = config.get('regions', {})
+            
+            # Create Shapely polygons for each region
+            for region_id, region_data in REGIONS.items():
+                polygon_coords = region_data.get('polygonShapely', [])
+                is_multi = region_data.get('isMultiPolygon', False)
+                
+                if polygon_coords:
+                    if is_multi:
+                        # MultiPolygon - array of polygon coordinate arrays
+                        polygons = []
+                        for poly_coords in polygon_coords:
+                            if poly_coords and len(poly_coords) >= 3:
+                                coords = [tuple(coord) for coord in poly_coords]
+                                polygons.append(Polygon(coords))
+                        
+                        if polygons:
+                            REGION_POLYGONS[region_id] = MultiPolygon(polygons)
+                            print(f"🗺️  {region_data['name']} MultiPolygon initialized with {len(polygons)} polygons")
+                        else:
+                            REGION_POLYGONS[region_id] = None
+                            print(f"⚠️  {region_data['name']} has no valid polygon coordinates")
+                    else:
+                        # Single polygon
+                        if len(polygon_coords) >= 3:
+                            coords = [tuple(coord) for coord in polygon_coords]
+                            REGION_POLYGONS[region_id] = Polygon(coords)
+                            print(f"🗺️  {region_data['name']} polygon initialized with {len(coords)} vertices")
+                        else:
+                            REGION_POLYGONS[region_id] = None
+                            print(f"⚠️  {region_data['name']} has no valid polygon coordinates")
+                else:
+                    REGION_POLYGONS[region_id] = None
+                    print(f"⚠️  {region_data['name']} has no polygon coordinates")
+            
+            return config.get('defaultRegion', 'singapore')
+    except Exception as e:
+        print(f"⚠️  Could not load regions config: {e}")
+        return 'singapore'
+
+# Initialize regions on startup
+DEFAULT_REGION = load_regions_config()
+CURRENT_REGION = DEFAULT_REGION
+
+def get_region_bbox(region_id=None):
+    """Get the bounding box for a region"""
+    region_id = region_id or CURRENT_REGION
+    if region_id in REGIONS:
+        return REGIONS[region_id].get('bbox', '')
+    return ''
+
+def get_region_polygon(region_id=None):
+    """Get the Shapely polygon for a region"""
+    region_id = region_id or CURRENT_REGION
+    return REGION_POLYGONS.get(region_id)
+
+def get_region_name(region_id=None):
+    """Get the display name for a region"""
+    region_id = region_id or CURRENT_REGION
+    if region_id in REGIONS:
+        return REGIONS[region_id].get('name', region_id)
+    return region_id
+
+# Legacy support - keep SINGAPORE_BBOX for backward compatibility
+SINGAPORE_BBOX = get_region_bbox('singapore') or "103.56,1.13,104.14,1.48"
 
 # Time range for fetching changesets (in hours)
 CHANGESET_TIME_RANGE_HOURS = int(os.environ.get('CHANGESET_TIME_RANGE_HOURS', '24'))
@@ -510,12 +508,23 @@ VALIDATION_THRESHOLDS = {
     'mass_deletion_threshold': 50,  # 50+ deletions triggers "needs review"
 }
 
-def is_changeset_in_singapore(changeset):
+def is_changeset_in_region(changeset, region_id=None):
     """
-    Check if a changeset is primarily within Singapore using polygon-based filtering.
-    Returns True if the changeset's center point is within Singapore's actual boundaries.
-    This is more accurate than rectangular bounding box and excludes Malaysian areas.
+    Check if a changeset is primarily within a region using polygon-based filtering.
+    Returns True if the changeset's center point is within the region's actual boundaries.
+    This is more accurate than rectangular bounding box.
+    
+    Args:
+        changeset: The changeset data dict
+        region_id: The region to check against (defaults to current region)
     """
+    region_id = region_id or CURRENT_REGION
+    polygon = get_region_polygon(region_id)
+    
+    # If no polygon for this region, we can't filter - include all
+    if polygon is None:
+        return True
+    
     bbox = changeset.get('bbox')
     
     # If no bbox, we can't determine location - exclude it
@@ -527,12 +536,17 @@ def is_changeset_in_singapore(changeset):
     center_lat = (bbox['min_lat'] + bbox['max_lat']) / 2
     center_lon = (bbox['min_lon'] + bbox['max_lon']) / 2
     
-    # Create a Shapely Point and check if it's within Singapore polygon
+    # Create a Shapely Point and check if it's within region polygon
     # Note: Shapely uses (longitude, latitude) order
     point = Point(center_lon, center_lat)
-    is_within = SINGAPORE_POLYGON.contains(point)
+    is_within = polygon.contains(point)
     
     return is_within
+
+# Legacy function for backward compatibility
+def is_changeset_in_singapore(changeset):
+    """Legacy wrapper - checks if changeset is in Singapore region"""
+    return is_changeset_in_region(changeset, 'singapore')
 
 def validate_changeset(changeset):
     """
@@ -610,11 +624,24 @@ def fetch_changeset_details(changeset_id):
         print(f"Error fetching details for changeset {changeset_id}: {e}")
         return None
 
-def fetch_osm_changesets(bbox=SINGAPORE_BBOX, limit=200):
+def fetch_osm_changesets(bbox=None, limit=200, region=None):
     """
     Fetch changesets from OpenStreetMap API for a given bounding box.
     Uses optimized parallel fetching for speed.
+    
+    Args:
+        bbox: Bounding box string (defaults to current region's bbox)
+        limit: Maximum number of changesets to return
+        region: Region ID to filter by (defaults to current region)
     """
+    # Use provided region, or fall back to current region
+    region = region or CURRENT_REGION
+    
+    # Use provided bbox, or get it from the region config
+    if bbox is None:
+        bbox = get_region_bbox(region)
+    
+    region_name = get_region_name(region)
     try:
         import time
         start_time_overall = time.time()
@@ -640,10 +667,10 @@ def fetch_osm_changesets(bbox=SINGAPORE_BBOX, limit=200):
         print(f"📊 Fetching up to {limit} changesets from last {CHANGESET_TIME_RANGE_HOURS} hours (max {max_requests} API calls)...")
         
         for request_num in range(max_requests):
-            # Stop if we already have enough changesets that pass the Singapore filter
-            singapore_count = sum(1 for cs in all_changesets if is_changeset_in_singapore(cs))
-            if singapore_count >= limit:
-                print(f"  ℹ️  Already have {singapore_count} Singapore changesets, stopping early")
+            # Stop if we already have enough changesets that pass the region filter
+            region_count = sum(1 for cs in all_changesets if is_changeset_in_region(cs, region))
+            if region_count >= limit:
+                print(f"  ℹ️  Already have {region_count} {region_name} changesets, stopping early")
                 break
         
             params = {
@@ -731,9 +758,9 @@ def fetch_osm_changesets(bbox=SINGAPORE_BBOX, limit=200):
                 break
         fetch_time = time.time() - start_time_overall
         
-        # Filter to only include changesets that are primarily within Singapore
+        # Filter to only include changesets that are primarily within the region
         total_fetched = len(all_changesets)
-        changesets = [cs for cs in all_changesets if is_changeset_in_singapore(cs)]
+        changesets = [cs for cs in all_changesets if is_changeset_in_region(cs, region)]
         filtered_count = len(changesets)
         
         # Sort by created_at descending (most recent first)
@@ -741,7 +768,7 @@ def fetch_osm_changesets(bbox=SINGAPORE_BBOX, limit=200):
         changesets = changesets[:limit]
         
         # Debug: Log some changeset info
-        print(f"📈 Total: {total_fetched} fetched, {filtered_count} in Singapore, {len(changesets)} after limit ({fetch_time:.1f}s)")
+        print(f"📈 Total: {total_fetched} fetched, {filtered_count} in {region_name}, {len(changesets)} after limit ({fetch_time:.1f}s)")
         if changesets:
             oldest = changesets[-1]['created_at'][:10] if len(changesets) > 0 else 'N/A'
             newest = changesets[0]['created_at'][:10] if len(changesets) > 0 else 'N/A'
@@ -887,13 +914,53 @@ def index():
     """Serve the dashboard HTML page"""
     return render_template('index.html')
 
+# ============================================
+# Region API Endpoints
+# ============================================
+
+@app.route('/api/regions')
+def get_regions():
+    """API endpoint to get available regions"""
+    return jsonify({
+        'success': True,
+        'regions': REGIONS,
+        'currentRegion': CURRENT_REGION,
+        'defaultRegion': DEFAULT_REGION
+    })
+
+@app.route('/api/regions/<region_id>')
+def get_region(region_id):
+    """API endpoint to get a specific region's configuration"""
+    if region_id not in REGIONS:
+        return jsonify({
+            'success': False,
+            'error': f'Region {region_id} not found'
+        }), 404
+    
+    return jsonify({
+        'success': True,
+        'region': REGIONS[region_id]
+    })
+
 @app.route('/api/changesets')
 def get_changesets():
-    """API endpoint to get changesets"""
-    changesets = fetch_osm_changesets()
+    """API endpoint to get changesets for a region"""
+    region = request.args.get('region', CURRENT_REGION)
+    
+    # Validate region exists
+    if region not in REGIONS:
+        return jsonify({
+            'success': False,
+            'error': f'Region {region} not found'
+        }), 404
+    
+    # Use limit=1000 to match analytics endpoint and ensure all changesets are included
+    changesets = fetch_osm_changesets(region=region, limit=1000)
     return jsonify({
         'success': True,
         'count': len(changesets),
+        'region': region,
+        'regionName': get_region_name(region),
         'changesets': changesets
     })
 
@@ -1386,11 +1453,14 @@ def fetch_element_geometry(element_type, element_id, version=None):
 @app.route('/api/statistics')
 def get_stats():
     """API endpoint to get statistics"""
-    changesets = fetch_osm_changesets()
+    region_id = request.args.get('region', 'singapore')
+    changesets = fetch_osm_changesets(region=region_id)
     stats = get_statistics(changesets)
     return jsonify({
         'success': True,
-        'statistics': stats
+        'statistics': stats,
+        'region': region_id,
+        'regionName': get_region_name(region_id)
     })
 
 @app.route('/api/analytics')
@@ -1399,11 +1469,12 @@ def get_analytics():
     try:
         # Fixed to 24 hours
         hours = 24
+        region_id = request.args.get('region', 'singapore')
         
-        print(f"📊 Fetching analytics for last 24 hours")
+        print(f"📊 Fetching analytics for last 24 hours (region: {region_id})")
         
         # Fetch changesets for the time range
-        changesets = fetch_osm_changesets(bbox=SINGAPORE_BBOX, limit=1000)
+        changesets = fetch_osm_changesets(region=region_id, limit=1000)
         
         # Filter by time range
         cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
@@ -1535,7 +1606,9 @@ def get_analytics():
         return jsonify({
             'success': True,
             'analytics': analytics_data,
-            'changeset_count': len(changesets)
+            'changeset_count': len(changesets),
+            'region': region_id,
+            'regionName': get_region_name(region_id)
         })
         
     except Exception as e:
@@ -1767,10 +1840,21 @@ def get_user_changesets():
         return jsonify({'error': 'Not logged in'}), 401
     
     user_id = session['user']['id']
+    region = request.args.get('region', CURRENT_REGION)
+    
+    # Validate region exists
+    if region not in REGIONS:
+        return jsonify({
+            'success': False,
+            'error': f'Region {region} not found'
+        }), 404
+    
+    region_bbox = get_region_bbox(region)
+    region_name = get_region_name(region)
     
     try:
-        # Fetch changesets for this user in Singapore
-        # Use a longer time range (30 days) for user's own edits
+        # Fetch changesets for this user in the selected region
+        # Use a longer time range (365 days) for user's own edits
         url = "https://api.openstreetmap.org/api/0.6/changesets"
         
         end_time = datetime.now(timezone.utc)
@@ -1779,7 +1863,7 @@ def get_user_changesets():
         
         params = {
             'user': user_id,
-            'bbox': SINGAPORE_BBOX,
+            'bbox': region_bbox,
             'closed': 'true',
             'time': f"{start_time.isoformat()}Z,{end_time.isoformat()}Z"
         }
@@ -1825,18 +1909,20 @@ def get_user_changesets():
             
             changesets.append(cs_data)
         
-        # Filter to only include changesets that are primarily within Singapore
-        changesets = [cs for cs in changesets if is_changeset_in_singapore(cs)]
+        # Filter to only include changesets that are primarily within the region
+        changesets = [cs for cs in changesets if is_changeset_in_region(cs, region)]
         
         changesets.sort(key=lambda x: x['created_at'], reverse=True)
         
-        print(f"📊 My Edits: Found {len(changesets)} changesets for user {session['user'].get('display_name', user_id)} in Singapore (last 30 days)")
+        print(f"📊 My Edits: Found {len(changesets)} changesets for user {session['user'].get('display_name', user_id)} in {region_name} (last 365 days)")
         
         return jsonify({
             'success': True,
             'count': len(changesets),
+            'region': region,
+            'regionName': region_name,
             'changesets': changesets,
-            'time_range': '30 days'
+            'time_range': '365 days'
         })
         
     except Exception as e:
@@ -1960,9 +2046,22 @@ def get_user_profile(username):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/profile/<username>/region-stats')
 @app.route('/api/profile/<username>/singapore-stats')
-def get_user_singapore_stats(username):
-    """Get user's statistics for Singapore region"""
+def get_user_region_stats(username):
+    """Get user's statistics for a specific region (defaults to current region)"""
+    region = request.args.get('region', CURRENT_REGION)
+    
+    # Validate region exists
+    if region not in REGIONS:
+        return jsonify({
+            'success': False,
+            'error': f'Region {region} not found'
+        }), 404
+    
+    region_bbox = get_region_bbox(region)
+    region_name = get_region_name(region)
+    
     try:
         headers = {'User-Agent': 'ATLAS-Singapore/1.0'}
         
@@ -1985,7 +2084,7 @@ def get_user_singapore_stats(username):
         # Get user ID from first changeset
         user_id = search_changesets[0].get('uid')
         
-        # Fetch changesets for this user in Singapore
+        # Fetch changesets for this user in the selected region
         changesets_url = "https://api.openstreetmap.org/api/0.6/changesets"
         
         end_time = datetime.now(timezone.utc)
@@ -1993,7 +2092,7 @@ def get_user_singapore_stats(username):
         
         params = {
             'user': user_id,
-            'bbox': SINGAPORE_BBOX,
+            'bbox': region_bbox,
             'closed': 'true',
             'time': f"{start_time.isoformat()}Z,{end_time.isoformat()}Z"
         }
@@ -2035,8 +2134,8 @@ def get_user_singapore_stats(username):
             
             changesets.append(cs_data)
         
-        # Filter to only include changesets that are primarily within Singapore
-        changesets = [cs for cs in changesets if is_changeset_in_singapore(cs)]
+        # Filter to only include changesets that are primarily within the region
+        changesets = [cs for cs in changesets if is_changeset_in_region(cs, region)]
         
         # Fetch detailed statistics for changesets
         print(f"Fetching detailed statistics for {len(changesets)} changesets...")
@@ -2126,11 +2225,13 @@ def get_user_singapore_stats(username):
         
         return jsonify({
             'success': True,
+            'region': region,
+            'regionName': region_name,
             'stats': stats
         })
         
     except Exception as e:
-        print(f"Error fetching user Singapore stats: {e}")
+        print(f"Error fetching user {region_name} stats: {e}")
         return jsonify({'error': str(e)}), 500
 
 

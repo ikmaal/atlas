@@ -127,6 +127,48 @@ body {
     }
 }
 
+/* Region Switcher */
+.region-switcher-container {
+    padding: 8px 20px 16px 20px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.region-switcher {
+    width: 100%;
+    padding: 10px 12px;
+    font-family: 'Satoshi', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 500;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 36px;
+}
+
+.region-switcher:hover {
+    border-color: var(--primary-color);
+    background-color: var(--bg-secondary);
+}
+
+.region-switcher:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.1);
+}
+
+.region-switcher option {
+    padding: 8px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
 .sidenav-header {
     padding: 24px 20px 16px 20px;
     font-size: 0.675rem;
@@ -4952,4 +4994,242 @@ body {
         font-size: 1.1rem;
     }
 }
+
+/* Region Switching Loading Overlay */
+.region-loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.region-loading-overlay.visible {
+    opacity: 1;
+}
+
+.region-loading-content {
+    text-align: center;
+    padding: 40px;
+}
+
+.region-loading-spinner {
+    width: 48px;
+    height: 48px;
+    margin: 0 auto 24px;
+    border: 4px solid #e5e7eb;
+    border-top-color: #1a1a1a;
+    border-radius: 50%;
+    animation: region-spinner-rotate 0.8s linear infinite;
+}
+
+@keyframes region-spinner-rotate {
+    to { transform: rotate(360deg); }
+}
+
+.region-loading-text {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #1a1a1a;
+    margin-bottom: 8px;
+}
+
+.region-loading-text span {
+    color: #0066cc;
+}
+
+.region-loading-subtext {
+    font-size: 0.9rem;
+    color: #6b7280;
+    margin-bottom: 20px;
+}
+
+.region-loading-progress-container {
+    width: 280px;
+    height: 6px;
+    background: #e5e7eb;
+    border-radius: 3px;
+    overflow: hidden;
+    margin: 0 auto 12px;
+}
+
+.region-loading-progress-bar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #1a1a1a 0%, #0066cc 100%);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+.region-loading-step {
+    font-size: 0.8rem;
+    color: #9ca3af;
+    font-weight: 500;
+}
+
+/* Geographic Distribution Styles */
+.geo-distribution {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    padding: 8px 0;
+}
+
+.geo-distribution-loading {
+    grid-column: 1 / -1;
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 32px;
+    font-size: 0.95rem;
+}
+
+.geo-area-card {
+    background: linear-gradient(135deg, var(--surface-elevated) 0%, var(--surface-color) 100%);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    transition: all 0.2s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.geo-area-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent-color);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.geo-area-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4px;
+    height: 100%;
+    background: var(--area-color, var(--accent-color));
+    border-radius: 12px 0 0 12px;
+}
+
+.geo-area-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.geo-area-name {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.geo-area-name svg {
+    width: 16px;
+    height: 16px;
+    color: var(--area-color, var(--accent-color));
+}
+
+.geo-area-count {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--area-color, var(--accent-color));
+    line-height: 1;
+}
+
+.geo-area-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.geo-area-stat {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.geo-area-stat-icon {
+    font-size: 0.75rem;
+}
+
+.geo-area-bar {
+    height: 6px;
+    background: var(--surface-elevated);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: auto;
+}
+
+.geo-area-bar-fill {
+    height: 100%;
+    background: var(--area-color, var(--accent-color));
+    border-radius: 3px;
+    transition: width 0.5s ease;
+}
+
+.geo-empty-state {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 48px 24px;
+    color: var(--text-secondary);
+}
+
+.geo-empty-state svg {
+    width: 48px;
+    height: 48px;
+    margin-bottom: 16px;
+    opacity: 0.5;
+}
+
+.geo-empty-state h4 {
+    font-size: 1.1rem;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+}
+
+.geo-empty-state p {
+    font-size: 0.9rem;
+}
+
+/* Area color variables for each region */
+.geo-area-card[data-area="north"] { --area-color: #3b82f6; }
+.geo-area-card[data-area="south"] { --area-color: #10b981; }
+.geo-area-card[data-area="east"] { --area-color: #f59e0b; }
+.geo-area-card[data-area="west"] { --area-color: #8b5cf6; }
+.geo-area-card[data-area="central"] { --area-color: #ef4444; }
+
+/* Malaysia states colors */
+.geo-area-card[data-area="johor"] { --area-color: #3b82f6; }
+.geo-area-card[data-area="selangor"] { --area-color: #10b981; }
+.geo-area-card[data-area="sabah"] { --area-color: #f59e0b; }
+.geo-area-card[data-area="sarawak"] { --area-color: #8b5cf6; }
+.geo-area-card[data-area="penang"] { --area-color: #ef4444; }
+.geo-area-card[data-area="perak"] { --area-color: #06b6d4; }
+.geo-area-card[data-area="kelantan"] { --area-color: #ec4899; }
+.geo-area-card[data-area="pahang"] { --area-color: #84cc16; }
+.geo-area-card[data-area="terengganu"] { --area-color: #f97316; }
+.geo-area-card[data-area="kedah"] { --area-color: #6366f1; }
+.geo-area-card[data-area="negeri-sembilan"] { --area-color: #14b8a6; }
+.geo-area-card[data-area="melaka"] { --area-color: #a855f7; }
+.geo-area-card[data-area="perlis"] { --area-color: #facc15; }
+.geo-area-card[data-area="kuala-lumpur"] { --area-color: #22c55e; }
+.geo-area-card[data-area="labuan"] { --area-color: #64748b; }
+.geo-area-card[data-area="putrajaya"] { --area-color: #0ea5e9; }
 

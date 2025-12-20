@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ATLAS - Singapore OpenStreetMap Monitor</title>
+    <title>ATLAS</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
@@ -11,6 +12,19 @@
     <link href="https://api.fontshare.com/v2/css?f[]=satoshi@900,700,500,400&display=swap" rel="stylesheet">
 </head>
 <body>
+    <!-- Region Switching Loading Overlay -->
+    <div id="regionLoadingOverlay" class="region-loading-overlay" style="display: none;">
+        <div class="region-loading-content">
+            <div class="region-loading-spinner"></div>
+            <div class="region-loading-text">Switching to <span id="regionLoadingName">Malaysia</span>...</div>
+            <div class="region-loading-subtext" id="regionLoadingStatus">Loading changesets and analytics</div>
+            <div class="region-loading-progress-container">
+                <div class="region-loading-progress-bar" id="regionLoadingProgress"></div>
+            </div>
+            <div class="region-loading-step" id="regionLoadingStep">Preparing...</div>
+        </div>
+    </div>
+    
     <div class="main-wrapper">
         <!-- Side Navigation -->
         <aside class="sidenav">
@@ -25,6 +39,14 @@
                         <span class="sidenav-brand-title">ATLAS</span>
                         <span class="sidenav-brand-subtitle">Singapore</span>
                     </div>
+                </div>
+                
+                <!-- Region Switcher -->
+                <div class="region-switcher-container">
+                    <select id="regionSwitcher" class="region-switcher" onchange="switchRegion(this.value)" title="Switch Region">
+                        <option value="singapore">🇸🇬 Singapore</option>
+                        <option value="malaysia">🇲🇾 Malaysia</option>
+                    </select>
                 </div>
 
             <div class="sidenav-header">Navigation</div>
@@ -411,6 +433,24 @@
                                 <div class="dashboard-card-body">
                                     <div id="contributorsList" class="contributors-list">
                                         <div class="contributors-empty">No users with changesets needing review</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Geographic Distribution -->
+                            <div class="dashboard-card" style="grid-column: span 12;">
+                                <div class="dashboard-card-header">
+                                    <h3>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                                            <circle cx="12" cy="10" r="3"></circle>
+                                        </svg>
+                                        <span id="geoDistributionTitle">Geographic Distribution</span>
+                                    </h3>
+                                </div>
+                                <div class="dashboard-card-body">
+                                    <div id="geoDistribution" class="geo-distribution">
+                                        <div class="geo-distribution-loading">Loading geographic data...</div>
                                     </div>
                                 </div>
                             </div>

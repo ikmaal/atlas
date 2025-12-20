@@ -12,6 +12,11 @@ let currentCommentChangesetId = null;
 let visualizationLayer = null; // Layer for AI visualization
 let myEditsVisualizationLayer = null; // Layer for My Edits AI visualization
 
+// Region configuration
+let regions = {};
+let currentRegion = 'singapore';
+let currentRegionData = null;
+
 // Validation visibility state
 let validationVisibility = {
     valid: true,
@@ -25,7 +30,10 @@ let currentFilters = {
 };
 
 // Initialize the application
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
+    // Load regions first
+    await loadRegions();
+    
     initMap();
     loadData();
 
@@ -47,6 +55,232 @@ document.addEventListener('DOMContentLoaded', function() {
     // Auto-refresh every 5 minutes
     setInterval(loadData, 5 * 60 * 1000);
 });
+
+// Load available regions from the API
+async function loadRegions() {
+    try {
+        const response = await fetch('/api/regions');
+        const data = await response.json();
+        
+        if (data.success) {
+            regions = data.regions;
+            currentRegion = data.currentRegion || data.defaultRegion || 'singapore';
+            currentRegionData = regions[currentRegion];
+            
+            // Update region switcher UI
+            updateRegionSwitcher();
+            
+            console.log(`🌏 Loaded ${Object.keys(regions).length} regions, current: ${currentRegion}`);
+        }
+    } catch (error) {
+        console.error('Error loading regions:', error);
+        // Fallback to singapore
+        currentRegion = 'singapore';
+    }
+}
+
+// Update the region switcher dropdown
+function updateRegionSwitcher() {
+    const switcher = document.getElementById('regionSwitcher');
+    if (!switcher) return;
+    
+    switcher.innerHTML = '';
+    
+    for (const [regionId, regionData] of Object.entries(regions)) {
+        const option = document.createElement('option');
+        option.value = regionId;
+        option.textContent = `${regionData.flag} ${regionData.name}`;
+        option.selected = regionId === currentRegion;
+        switcher.appendChild(option);
+    }
+}
+
+// Show region loading overlay
+function showRegionLoadingOverlay(regionName) {
+    const overlay = document.getElementById('regionLoadingOverlay');
+    const nameSpan = document.getElementById('regionLoadingName');
+    const progressBar = document.getElementById('regionLoadingProgress');
+    const stepText = document.getElementById('regionLoadingStep');
+    
+    if (overlay) {
+        if (nameSpan) nameSpan.textContent = regionName;
+        if (progressBar) progressBar.style.width = '0%';
+        if (stepText) stepText.textContent = 'Preparing...';
+        overlay.style.display = 'flex';
+        // Trigger reflow for animation
+        overlay.offsetHeight;
+        overlay.classList.add('visible');
+    }
+}
+
+// Update region loading progress
+function updateRegionLoadingProgress(percent, stepMessage) {
+    const progressBar = document.getElementById('regionLoadingProgress');
+    const stepText = document.getElementById('regionLoadingStep');
+    
+    if (progressBar) progressBar.style.width = `${percent}%`;
+    if (stepText) stepText.textContent = stepMessage;
+}
+
+// Hide region loading overlay
+function hideRegionLoadingOverlay() {
+    const overlay = document.getElementById('regionLoadingOverlay');
+    const progressBar = document.getElementById('regionLoadingProgress');
+    
+    if (progressBar) progressBar.style.width = '100%';
+    
+    setTimeout(() => {
+        if (overlay) {
+            overlay.classList.remove('visible');
+            setTimeout(() => {
+                overlay.style.display = 'none';
+            }, 300); // Match the CSS transition duration
+        }
+    }, 200); // Brief delay to show 100% completion
+}
+
+// Switch to a different region
+async function switchRegion(regionId) {
+    if (!regions[regionId]) {
+        console.error(`Region ${regionId} not found`);
+        return;
+    }
+    
+    // Don't switch if already on this region
+    if (currentRegion === regionId) {
+        return;
+    }
+    
+    const regionData = regions[regionId];
+    
+    console.log(`🌏 Switching to region: ${regionData.name}`);
+    
+    // Show loading overlay
+    showRegionLoadingOverlay(regionData.name);
+    
+    currentRegion = regionId;
+    currentRegionData = regionData;
+    
+    // Step 1: Update UI (10%)
+    updateRegionLoadingProgress(10, 'Updating interface...');
+    updateRegionUI();
+    
+    // Step 2: Update map (20%)
+    updateRegionLoadingProgress(20, 'Updating map view...');
+    updateMapForRegion();
+    
+    // Set a timeout to auto-hide the loading overlay if loading takes too long
+    const loadingTimeout = setTimeout(() => {
+        console.warn('⚠️ Region switch took too long, hiding loading overlay');
+        hideRegionLoadingOverlay();
+    }, 60000); // 60 second timeout
+    
+    try {
+        // Step 3: Load changesets (50%)
+        updateRegionLoadingProgress(35, 'Loading changesets...');
+        await loadData();
+        updateRegionLoadingProgress(55, 'Changesets loaded');
+        
+        // Step 4: Load analytics (80%)
+        if (typeof updateAnalyticsCharts === 'function') {
+            updateRegionLoadingProgress(65, 'Loading analytics...');
+            await updateAnalyticsCharts();
+            updateRegionLoadingProgress(85, 'Analytics loaded');
+        }
+        
+        // Step 5: Load user data if logged in (95%)
+        if (document.getElementById('myEditsBtn')?.style.display !== 'none') {
+            updateRegionLoadingProgress(90, 'Loading your edits...');
+            loadMyEdits();
+        }
+        
+        updateRegionLoadingProgress(100, 'Complete!');
+    } catch (error) {
+        console.error('❌ Error switching region:', error);
+        updateRegionLoadingProgress(100, 'Error - please try again');
+    } finally {
+        // Clear the timeout since we're done
+        clearTimeout(loadingTimeout);
+        
+        // Hide loading overlay (with a small delay to ensure smooth transition)
+        setTimeout(() => {
+            hideRegionLoadingOverlay();
+        }, 400);
+    }
+}
+
+// Update UI elements for current region
+function updateRegionUI() {
+    // Update brand subtitle
+    const brandSubtitle = document.querySelector('.sidenav-brand-subtitle');
+    if (brandSubtitle) {
+        brandSubtitle.textContent = currentRegionData.name;
+    }
+    
+    // Update page title
+    document.title = `ATLAS - ${currentRegionData.name} OpenStreetMap Monitor`;
+    
+    // Update boundary toggle button text
+    const boundaryToggle = document.getElementById('boundaryToggle');
+    if (boundaryToggle) {
+        const isVisible = regionBoundaryVisible;
+        boundaryToggle.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                <circle cx="12" cy="10" r="3"></circle>
+            </svg>
+            ${isVisible ? 'Hide' : 'Show'} ${currentRegionData.name} Boundary
+        `;
+    }
+}
+
+// Update map view for current region
+function updateMapForRegion() {
+    if (!map || !currentRegionData) return;
+    
+    // Update map center and zoom
+    map.setView(currentRegionData.center, currentRegionData.zoom);
+    
+    // Update boundary polygon
+    if (regionPolygonLayer) {
+        map.removeLayer(regionPolygonLayer);
+    }
+    
+    if (currentRegionData.polygon && currentRegionData.polygon.length > 0) {
+        // Use helper function to handle both single and multi-polygon regions
+        regionPolygonLayer = createRegionPolygonLayer(map);
+        
+        // Update map bounds
+        map.fitBounds(regionPolygonLayer.getBounds(), { padding: [20, 20] });
+        map.setMaxBounds(regionPolygonLayer.getBounds().pad(0.5));
+        map.setMinZoom(currentRegionData.minZoom || 5);
+        
+        // Add to map if boundary is visible
+        if (regionBoundaryVisible) {
+            regionPolygonLayer.addTo(map);
+        }
+    }
+    
+    // Update myEditsMap if initialized
+    if (myEditsMap && currentRegionData.polygon && currentRegionData.polygon.length > 0) {
+        myEditsMap.setView(currentRegionData.center, currentRegionData.zoom);
+        
+        if (myEditsPolygonLayer) {
+            myEditsMap.removeLayer(myEditsPolygonLayer);
+        }
+        
+        // Use helper function to handle both single and multi-polygon regions
+        myEditsPolygonLayer = createRegionPolygonLayer(myEditsMap);
+        
+        myEditsMap.fitBounds(myEditsPolygonLayer.getBounds(), { padding: [20, 20] });
+        myEditsMap.setMaxBounds(myEditsPolygonLayer.getBounds().pad(0.5));
+        myEditsMap.setMinZoom(currentRegionData.minZoom || 5);
+        
+        if (regionBoundaryVisible) {
+            myEditsPolygonLayer.addTo(myEditsMap);
+        }
+    }
+}
 
 // Initialize tab functionality
 function initTabs() {
@@ -157,14 +391,59 @@ function applyFilters() {
     updateMap(filtered);
 }
 
-// Singapore boundary visibility state
-let singaporeBoundaryVisible = false;
-let singaporePolygonLayer = null;
+// Region boundary visibility state
+let regionBoundaryVisible = false;
+let regionPolygonLayer = null;
+let myEditsPolygonLayer = null;
 let dashboardPolygonLayer = null;
 
-// Singapore boundary polygon coordinates [lat, lon] for Leaflet
-// Custom polygon from geojson.io - accurate Singapore coastline
-const SINGAPORE_BOUNDARY = [
+// Legacy alias for backward compatibility
+let singaporeBoundaryVisible = false;
+let singaporePolygonLayer = null;
+
+// Get current region boundary (for legacy code)
+function getCurrentRegionBoundary() {
+    if (currentRegionData && currentRegionData.polygon) {
+        return currentRegionData.polygon;
+    }
+    // Fallback to Singapore
+    return SINGAPORE_BOUNDARY_FALLBACK;
+}
+
+// Check if region has multi-polygon (like Malaysia with Peninsular and East Malaysia)
+function isMultiPolygonRegion() {
+    return currentRegionData && currentRegionData.isMultiPolygon === true;
+}
+
+// Create a Leaflet polygon layer for the current region
+// Handles both single polygons and multi-polygons
+function createRegionPolygonLayer(mapInstance, options = {}) {
+    const boundary = getCurrentRegionBoundary();
+    const isMulti = isMultiPolygonRegion();
+    const boundaryColor = currentRegionData?.boundaryColor || '#dc2626';
+    
+    const defaultOptions = {
+        color: boundaryColor,
+        weight: 3,
+        opacity: 0.9,
+        fillColor: boundaryColor,
+        fillOpacity: 0.05,
+        interactive: false,
+        pane: 'boundaryPane'
+    };
+    
+    const layerOptions = { ...defaultOptions, ...options };
+    
+    if (isMulti) {
+        // For multi-polygon, Leaflet L.polygon accepts array of coordinate arrays
+        return L.polygon(boundary, layerOptions);
+    } else {
+        return L.polygon(boundary, layerOptions);
+    }
+}
+
+// Fallback Singapore boundary polygon coordinates [lat, lon] for Leaflet
+const SINGAPORE_BOUNDARY_FALLBACK = [
     [1.4374204305910894, 103.68206176671208],
     [1.4285151679417964, 103.67276286043511],
     [1.416537060450807, 103.66830637387295],
@@ -236,14 +515,19 @@ const SINGAPORE_BOUNDARY = [
     [1.4374204305910894, 103.68206176671208],
 ];
 
+// Legacy alias
+const SINGAPORE_BOUNDARY = SINGAPORE_BOUNDARY_FALLBACK;
+
 // Initialize Leaflet map
 function initMap() {
     console.log('🗺️ Initializing map...');
     
-    // Singapore coordinates
-    const singaporeCenter = [1.3521, 103.8198];
+    // Get region center and zoom, or fall back to Singapore
+    const regionCenter = currentRegionData?.center || [1.3521, 103.8198];
+    const regionZoom = currentRegionData?.zoom || 11;
+    const regionMinZoom = currentRegionData?.minZoom || 10;
     
-    map = L.map('map').setView(singaporeCenter, 11);
+    map = L.map('map').setView(regionCenter, regionZoom);
     console.log('✅ Map initialized');
     
     // Add CartoDB Light tile layer (clean, modern style)
@@ -253,27 +537,23 @@ function initMap() {
         subdomains: 'abcd'
     }).addTo(map);
 
-    // Create a custom pane for the Singapore boundary to ensure visibility
+    // Create a custom pane for the region boundary to ensure visibility
     map.createPane('boundaryPane');
     map.getPane('boundaryPane').style.zIndex = 650;
     
-    // Create Singapore boundary polygon (hidden by default)
-    singaporePolygonLayer = L.polygon(SINGAPORE_BOUNDARY, {
-        color: '#dc2626',
-        weight: 3,
-        opacity: 0.9,
-        fillColor: '#dc2626',
-        fillOpacity: 0.05,
-        interactive: false,
-        pane: 'boundaryPane'
-    });
+    // Create region boundary polygon (hidden by default)
+    // Uses createRegionPolygonLayer to handle both single and multi-polygon regions
+    regionPolygonLayer = createRegionPolygonLayer(map);
+    // Legacy alias
+    singaporePolygonLayer = regionPolygonLayer;
+    
     // Don't add to map initially - user can toggle it
     
-    // Fit map to Singapore bounds and restrict panning
-    map.fitBounds(singaporePolygonLayer.getBounds(), { padding: [20, 20] });
-    map.setMaxBounds(singaporePolygonLayer.getBounds().pad(0.2));
-    map.setMinZoom(10);
-    console.log('✅ Singapore boundary polygon ready (hidden by default)');
+    // Fit map to region bounds and restrict panning
+    map.fitBounds(regionPolygonLayer.getBounds(), { padding: [20, 20] });
+    map.setMaxBounds(regionPolygonLayer.getBounds().pad(0.5));
+    map.setMinZoom(regionMinZoom);
+    console.log(`✅ ${currentRegionData?.name || 'Region'} boundary polygon ready (hidden by default)`);
 
     // Initialize marker cluster group
     markerCluster = L.markerClusterGroup({
@@ -298,22 +578,34 @@ function initMap() {
     console.log('✅ Marker cluster initialized');
 }
 
-// Toggle Singapore boundary polygon visibility
-function toggleSingaporeBoundary() {
-    singaporeBoundaryVisible = !singaporeBoundaryVisible;
+// Toggle region boundary polygon visibility
+function toggleRegionBoundary() {
+    regionBoundaryVisible = !regionBoundaryVisible;
+    singaporeBoundaryVisible = regionBoundaryVisible; // Legacy alias
+    
+    const regionName = currentRegionData?.name || 'Region';
     
     // Toggle on main map
-    if (map && singaporePolygonLayer) {
-        if (singaporeBoundaryVisible) {
-            singaporePolygonLayer.addTo(map);
+    if (map && regionPolygonLayer) {
+        if (regionBoundaryVisible) {
+            regionPolygonLayer.addTo(map);
         } else {
-            map.removeLayer(singaporePolygonLayer);
+            map.removeLayer(regionPolygonLayer);
+        }
+    }
+    
+    // Toggle on My Edits map
+    if (myEditsMap && myEditsPolygonLayer) {
+        if (regionBoundaryVisible) {
+            myEditsPolygonLayer.addTo(myEditsMap);
+        } else {
+            myEditsMap.removeLayer(myEditsPolygonLayer);
         }
     }
     
     // Toggle on dashboard map
     if (typeof dashboardMap !== 'undefined' && dashboardMap && dashboardPolygonLayer) {
-        if (singaporeBoundaryVisible) {
+        if (regionBoundaryVisible) {
             dashboardPolygonLayer.addTo(dashboardMap);
         } else {
             dashboardMap.removeLayer(dashboardPolygonLayer);
@@ -321,20 +613,25 @@ function toggleSingaporeBoundary() {
     }
     
     // Update all toggle buttons
-    const buttonText = singaporeBoundaryVisible ? 'Hide Boundary' : 'Show Boundary';
-    const buttonTitle = singaporeBoundaryVisible ? 'Hide Singapore boundary' : 'Show Singapore boundary';
+    const buttonText = regionBoundaryVisible ? 'Hide Boundary' : 'Show Boundary';
+    const buttonTitle = regionBoundaryVisible ? `Hide ${regionName} boundary` : `Show ${regionName} boundary`;
     
     ['boundaryToggleBtn', 'dashboardBoundaryToggleBtn'].forEach(btnId => {
         const btn = document.getElementById(btnId);
         if (btn) {
-            btn.classList.toggle('active', singaporeBoundaryVisible);
+            btn.classList.toggle('active', regionBoundaryVisible);
             btn.title = buttonTitle;
             const span = btn.querySelector('span');
             if (span) span.textContent = buttonText;
         }
     });
     
-    console.log(`🗺️ Singapore boundary ${singaporeBoundaryVisible ? 'shown' : 'hidden'}`);
+    console.log(`🗺️ ${regionName} boundary ${regionBoundaryVisible ? 'shown' : 'hidden'}`);
+}
+
+// Legacy alias for backward compatibility
+function toggleSingaporeBoundary() {
+    toggleRegionBoundary();
 }
 
 // Initialize My Edits map
@@ -343,9 +640,12 @@ function initMyEditsMap() {
         return; // Already initialized
     }
     
-    const singaporeCenter = [1.3521, 103.8198];
+    // Get region center and zoom, or fall back to Singapore
+    const regionCenter = currentRegionData?.center || [1.3521, 103.8198];
+    const regionZoom = currentRegionData?.zoom || 11;
+    const regionMinZoom = currentRegionData?.minZoom || 10;
     
-    myEditsMap = L.map('myEditsMap').setView(singaporeCenter, 11);
+    myEditsMap = L.map('myEditsMap').setView(regionCenter, regionZoom);
     
     // Add CartoDB Light tile layer (clean, modern style)
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
@@ -354,29 +654,22 @@ function initMyEditsMap() {
         subdomains: 'abcd'
     }).addTo(myEditsMap);
 
-    // Create a custom pane for the Singapore boundary to ensure visibility
+    // Create a custom pane for the region boundary to ensure visibility
     myEditsMap.createPane('boundaryPane');
     myEditsMap.getPane('boundaryPane').style.zIndex = 650;
     
-    // Create Singapore boundary polygon for myEditsMap (hidden by default, shared visibility state)
-    const myEditsPolygon = L.polygon(SINGAPORE_BOUNDARY, {
-        color: '#dc2626',
-        weight: 3,
-        opacity: 0.9,
-        fillColor: '#dc2626',
-        fillOpacity: 0.05,
-        interactive: false,
-        pane: 'boundaryPane'
-    });
+    // Create region boundary polygon for myEditsMap (hidden by default, shared visibility state)
+    // Uses createRegionPolygonLayer to handle both single and multi-polygon regions
+    myEditsPolygonLayer = createRegionPolygonLayer(myEditsMap);
     // Add if boundary is currently visible
-    if (singaporeBoundaryVisible) {
-        myEditsPolygon.addTo(myEditsMap);
+    if (regionBoundaryVisible) {
+        myEditsPolygonLayer.addTo(myEditsMap);
     }
     
-    // Fit map to Singapore bounds and restrict panning
-    myEditsMap.fitBounds(myEditsPolygon.getBounds(), { padding: [20, 20] });
-    myEditsMap.setMaxBounds(myEditsPolygon.getBounds().pad(0.2));
-    myEditsMap.setMinZoom(10);
+    // Fit map to region bounds and restrict panning
+    myEditsMap.fitBounds(myEditsPolygonLayer.getBounds(), { padding: [20, 20] });
+    myEditsMap.setMaxBounds(myEditsPolygonLayer.getBounds().pad(0.5));
+    myEditsMap.setMinZoom(regionMinZoom);
 
     // Initialize marker cluster group
     myEditsMarkerCluster = L.markerClusterGroup({
@@ -479,16 +772,17 @@ async function loadData() {
     showLoading(true);
     
     try {
-        // Fetch changesets and statistics in parallel
+        // Fetch changesets and statistics in parallel (with region parameter)
+        const regionParam = `region=${encodeURIComponent(currentRegion)}`;
         const [changesetsResponse, statsResponse] = await Promise.all([
-            fetch('/api/changesets'),
-            fetch('/api/statistics')
+            fetch(`/api/changesets?${regionParam}`),
+            fetch(`/api/statistics?${regionParam}`)
         ]);
         
         const changesetsData = await changesetsResponse.json();
         const statsData = await statsResponse.json();
         
-        console.log('📊 Changesets API response:', changesetsData);
+        console.log(`📊 Changesets API response for ${currentRegion}:`, changesetsData);
         console.log('📊 Number of changesets:', changesetsData.changesets?.length);
         
         if (changesetsData.success) {
@@ -542,9 +836,11 @@ function updateStatistics(stats) {
     }
     
     // Animate the numbers (with null checks)
+    // Note: totalChangesets, totalChanges, and changesetsNeedingReview are now updated
+    // by updateStatsCardsFromAnalytics() in analytics.js which has more complete data
+    // We still keep these as fallback in case analytics fails to load
     const totalChangesetsEl = document.getElementById('totalChangesets');
     const totalChangesEl = document.getElementById('totalChanges');
-    const changesetsNeedingReviewEl = document.getElementById('changesetsNeedingReview');
     
     if (totalChangesetsEl) {
         animateValue('totalChangesets', 0, stats.total_changesets, 1000);
@@ -552,9 +848,8 @@ function updateStatistics(stats) {
     if (totalChangesEl) {
         animateValue('totalChanges', 0, stats.total_changes, 1000);
     }
-    if (changesetsNeedingReviewEl) {
-        animateValue('changesetsNeedingReview', 0, stats.validation?.needs_review || 0, 1000);
-    }
+    // changesetsNeedingReview is now updated by analytics.js updateStatsCardsFromAnalytics()
+    // which provides accurate counts from the full analytics dataset
 }
 
 // Update changesets list
@@ -562,6 +857,7 @@ function updateChangesetsList(changesets) {
     const container = document.getElementById('changesetsList');
     
     if (!changesets || changesets.length === 0) {
+        const regionName = currentRegionData?.name || 'the selected';
         container.innerHTML = `
             <div class="empty-state">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -570,7 +866,7 @@ function updateChangesetsList(changesets) {
                     <line x1="12" y1="16" x2="12.01" y2="16"></line>
                 </svg>
                 <h3>No Changesets Found</h3>
-                <p>No recent changesets in the Singapore region.</p>
+                <p>No recent changesets match your filters in the ${regionName} region.</p>
             </div>
         `;
         return;
@@ -1210,8 +1506,11 @@ async function loadMyEdits() {
     
     if (loading) loading.style.display = 'block';
     
+    const regionName = currentRegionData?.name || 'this region';
+    
     try {
-        const response = await fetch('/api/user/changesets');
+        const regionParam = `region=${encodeURIComponent(currentRegion)}`;
+        const response = await fetch(`/api/user/changesets?${regionParam}`);
         
         if (!response.ok) {
             throw new Error('Failed to load changesets');
@@ -1234,7 +1533,7 @@ async function loadMyEdits() {
                         <polyline points="10 9 9 9 8 9"></polyline>
                     </svg>
                     <h3>No Changesets Found</h3>
-                    <p>You haven't made any changesets in Singapore yet.</p>
+                    <p>You haven't made any changesets in ${regionName} yet.</p>
                 </div>
             `;
             return;
