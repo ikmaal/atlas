@@ -870,25 +870,22 @@ function renderGeoDistribution(areaData, regionId) {
     const cardsHTML = areaData.map(area => `
         <div class="geo-area-card" data-area="${area.id}">
             <div class="geo-area-header">
-                <span class="geo-area-name">
-                    <span>${area.icon}</span>
-                    ${area.name}
-                </span>
-                <span class="geo-area-count">${area.count}</span>
+                <div class="geo-area-name">${area.name}</div>
+                <div class="geo-area-count">${area.count}</div>
             </div>
             <div class="geo-area-stats">
-                <span class="geo-area-stat">
-                    <span class="geo-area-stat-icon">✏️</span>
-                    ${area.edits.toLocaleString()} edits
-                </span>
-                <span class="geo-area-stat">
-                    <span class="geo-area-stat-icon">👤</span>
-                    ${area.users} users
-                </span>
-                <span class="geo-area-stat">
-                    <span class="geo-area-stat-icon">📊</span>
-                    ${area.percentage}%
-                </span>
+                <div class="geo-area-stat">
+                    <span class="geo-area-stat-label">Edits</span>
+                    <span class="geo-area-stat-value">${area.edits.toLocaleString()}</span>
+                </div>
+                <div class="geo-area-stat">
+                    <span class="geo-area-stat-label">Contributors</span>
+                    <span class="geo-area-stat-value">${area.users}</span>
+                </div>
+                <div class="geo-area-stat">
+                    <span class="geo-area-stat-label">Share</span>
+                    <span class="geo-area-stat-value">${area.percentage}%</span>
+                </div>
             </div>
             <div class="geo-area-bar">
                 <div class="geo-area-bar-fill" style="width: ${Math.round((area.count / maxCount) * 100)}%"></div>

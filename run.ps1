@@ -12,13 +12,14 @@
 # ============================================
 
 # Your OSM OAuth Credentials
-$env:OSM_CLIENT_ID="q-a7gttnOHrFfToAYgZnWU9tZuf6QpHLBNRd4YMxgSU"
-$env:OSM_CLIENT_SECRET="qGbFyDFxXG9adcfEBeMB_UE6e8JYf8tUX4vNVl7zxh8"
+# IMPORTANT: Replace these with your actual credentials from https://www.openstreetmap.org/oauth2/applications
+$env:OSM_CLIENT_ID="YOUR_CLIENT_ID_HERE"
+$env:OSM_CLIENT_SECRET="YOUR_CLIENT_SECRET_HERE"
 $env:OSM_REDIRECT_URI="http://127.0.0.1:5000/oauth/callback"
-$env:SECRET_KEY="a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2"
+$env:SECRET_KEY="YOUR_SECRET_KEY_HERE"
 
 # Groq API Key for Atlas AI (get free key from https://console.groq.com)
-$env:GROQ_API_KEY="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"
+$env:GROQ_API_KEY="YOUR_GROQ_API_KEY_HERE"
 
 Write-Host "================================================" -ForegroundColor Cyan
 Write-Host "ATLAS - Singapore OpenStreetMap Monitor" -ForegroundColor Green
