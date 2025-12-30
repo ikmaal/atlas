@@ -54,6 +54,9 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     // Auto-refresh every 5 minutes
     setInterval(loadData, 5 * 60 * 1000);
+    
+    // Set up IntersectionObserver to invalidate maps when they become visible
+    setupMapVisibilityObserver();
 });
 
 // Load available regions from the API
@@ -282,37 +285,7 @@ function updateMapForRegion() {
     }
 }
 
-// Initialize tab functionality
-function initTabs() {
-    const sidenavItems = document.querySelectorAll('.sidenav-item');
-
-    sidenavItems.forEach(button => {
-        button.addEventListener('click', function() {
-            const targetTab = this.getAttribute('data-tab');
-
-            // Remove active class from all buttons and contents
-            sidenavItems.forEach(btn => btn.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(content => {
-                content.classList.remove('active');
-            });
-
-            // Add active class to clicked button and corresponding content
-            this.classList.add('active');
-            document.getElementById(targetTab).classList.add('active');
-
-            // Show stats only on dashboard tab
-            const dashboardStats = document.getElementById('dashboardStats');
-            const dashboardTimeRange = document.getElementById('dashboardTimeRange');
-            if (targetTab === 'dashboard') {
-                if (dashboardStats) dashboardStats.style.display = 'grid';
-                if (dashboardTimeRange) dashboardTimeRange.style.display = 'flex';
-            } else {
-                if (dashboardStats) dashboardStats.style.display = 'none';
-                if (dashboardTimeRange) dashboardTimeRange.style.display = 'none';
-            }
-        });
-    });
-}
+// Initialize tab functionality (see updated version below with map invalidation)
 
 // Toggle filters visibility
 function toggleFilters() {
@@ -364,6 +337,32 @@ function initFilters() {
             applyFilters();
         });
     });
+}
+
+// Reset filters to default values
+function resetFilters() {
+    currentFilters.validity = 'all';
+    currentFilters.search = '';
+    currentFilters.keyword = '';
+    
+    // Update UI - reset filter buttons
+    const filterButtons = document.querySelectorAll('.filter-btn');
+    filterButtons.forEach(btn => {
+        if (btn.getAttribute('data-filter') === 'all') {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+    
+    // Clear search inputs
+    const searchInput = document.getElementById('searchFilter');
+    const keywordInput = document.getElementById('keywordFilter');
+    if (searchInput) searchInput.value = '';
+    if (keywordInput) keywordInput.value = '';
+    
+    // Re-apply filters to show all changesets
+    applyFilters();
 }
 
 // Apply filters to changesets
@@ -517,6 +516,71 @@ const SINGAPORE_BOUNDARY_FALLBACK = [
 
 // Legacy alias
 const SINGAPORE_BOUNDARY = SINGAPORE_BOUNDARY_FALLBACK;
+
+// Utility function to invalidate map size reliably
+function invalidateMapSize(mapInstance, delay = 150, retries = 3) {
+    if (!mapInstance) return;
+    
+    // Check if map container is visible
+    const container = mapInstance.getContainer();
+    if (!container) return;
+    
+    // Check visibility using multiple methods
+    const isVisible = container.offsetParent !== null && 
+                     container.offsetWidth > 0 && 
+                     container.offsetHeight > 0;
+    
+    if (!isVisible && retries > 0) {
+        // Container is hidden, try again after a short delay
+        setTimeout(() => invalidateMapSize(mapInstance, delay, retries - 1), 200);
+        return;
+    }
+    
+    // Use requestAnimationFrame for smooth timing
+    requestAnimationFrame(() => {
+        setTimeout(() => {
+            if (mapInstance && !mapInstance._destroyed) {
+                try {
+                    mapInstance.invalidateSize();
+                } catch (e) {
+                    console.warn('Error invalidating map size:', e);
+                }
+            }
+        }, delay);
+    });
+}
+
+// Set up IntersectionObserver to handle map visibility changes
+function setupMapVisibilityObserver() {
+    // Create observer for map containers
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting && entry.intersectionRatio > 0) {
+                const containerId = entry.target.id;
+                
+                // Invalidate the appropriate map
+                if (containerId === 'map' && map) {
+                    invalidateMapSize(map, 100);
+                } else if (containerId === 'myEditsMap' && myEditsMap) {
+                    invalidateMapSize(myEditsMap, 100);
+                } else if (containerId === 'dashboardMap' && typeof dashboardMap !== 'undefined' && dashboardMap) {
+                    invalidateMapSize(dashboardMap, 100);
+                }
+            }
+        });
+    }, {
+        threshold: 0.1 // Trigger when at least 10% visible
+    });
+    
+    // Observe all map containers
+    const mapContainer = document.getElementById('map');
+    const myEditsMapContainer = document.getElementById('myEditsMap');
+    const dashboardMapContainer = document.getElementById('dashboardMap');
+    
+    if (mapContainer) observer.observe(mapContainer);
+    if (myEditsMapContainer) observer.observe(myEditsMapContainer);
+    if (dashboardMapContainer) observer.observe(dashboardMapContainer);
+}
 
 // Initialize Leaflet map
 function initMap() {
@@ -1627,6 +1691,10 @@ function initTabs() {
     sidenavItems.forEach(button => {
         button.addEventListener('click', function() {
             const targetTab = this.getAttribute('data-tab');
+            
+            // Get current active tab before switching
+            const currentActiveTab = document.querySelector('.tab-content.active')?.id || 
+                                   document.querySelector('.sidenav-item.active')?.getAttribute('data-tab');
 
             // Remove active class from all buttons and contents
             sidenavItems.forEach(btn => btn.classList.remove('active'));
@@ -1637,6 +1705,13 @@ function initTabs() {
             // Add active class to clicked button and corresponding content
             this.classList.add('active');
             document.getElementById(targetTab).classList.add('active');
+
+            // Reset filters when returning to changesets tab (list-view)
+            // This ensures filters reset to "All" when coming back from another tab
+            const changesetsTab = 'list-view';
+            if (targetTab === changesetsTab && currentActiveTab !== changesetsTab) {
+                resetFilters();
+            }
 
             // Show stats only on dashboard tab
             const dashboardStats = document.getElementById('dashboardStats');
@@ -1649,11 +1724,18 @@ function initTabs() {
                 if (dashboardTimeRange) dashboardTimeRange.style.display = 'none';
             }
 
-            // Load specific tab content
+            // Load specific tab content and invalidate map sizes
             if (targetTab === 'map-view' && map) {
-                setTimeout(() => {
-                    map.invalidateSize();
-                }, 100);
+                invalidateMapSize(map);
+            } else if (targetTab === 'dashboard') {
+                // Initialize dashboard map if needed and invalidate size
+                if (typeof initializeDashboardMap === 'function') {
+                    initializeDashboardMap();
+                }
+                // Invalidate dashboard map size
+                if (typeof dashboardMap !== 'undefined' && dashboardMap) {
+                    invalidateMapSize(dashboardMap);
+                }
             } else if (targetTab === 'my-edits') {
                 // Initialize map if not already done
                 if (!myEditsMap) {
@@ -1662,11 +1744,7 @@ function initTabs() {
                 // Load data
                 loadMyEdits();
                 // Invalidate map size to ensure proper display
-                setTimeout(() => {
-                    if (myEditsMap) {
-                        myEditsMap.invalidateSize();
-                    }
-                }, 100);
+                invalidateMapSize(myEditsMap);
             }
         });
     });
@@ -4029,30 +4107,4 @@ function closeComparisonModal() {
     }
 }
 
-function exportComparison() {
-    const changesetId = document.getElementById('comparisonChangesetId').textContent.replace('#', '');
-    const report = {
-        changeset_id: changesetId,
-        timestamp: new Date().toISOString(),
-        summary: {
-            created: comparisonData.created.length,
-            modified: comparisonData.modified.length,
-            deleted: comparisonData.deleted.length
-        },
-        details: comparisonData
-    };
-    
-    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `changeset_${changesetId}_comparison.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-}
-
-function openInJOSM() {
-    const changesetId = document.getElementById('comparisonChangesetId').textContent.replace('#', '');
-    window.open(`http://127.0.0.1:8111/import?url=https://api.openstreetmap.org/api/0.6/changeset/${changesetId}/download`, '_blank');
-}
 

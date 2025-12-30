@@ -232,11 +232,7 @@ function addAtlasMessage(role, content, imageSrc = null) {
     if (role === 'assistant') {
         name = 'Atlas';
         avatarIcon = `
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"></circle>
-                <path d="M2 12h20"></path>
-                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-            </svg>
+            <img src="/static/logo.png" alt="Atlas Logo" style="height: 40px; width: auto; object-fit: contain;">
         `;
     } else {
         name = 'You';
@@ -297,11 +293,7 @@ function showAtlasLoading() {
     
     loadingDiv.innerHTML = `
         <div class="atlas-message-avatar atlas-avatar-typing">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"></circle>
-                <path d="M2 12h20"></path>
-                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-            </svg>
+            <img src="/static/logo.png" alt="Atlas Logo" style="height: 40px; width: auto; object-fit: contain;">
         </div>
         <div class="atlas-message-content">
             <div class="atlas-message-header">

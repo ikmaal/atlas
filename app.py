@@ -1530,13 +1530,46 @@ def get_analytics():
                         key = elem_type + 's'
                         element_breakdown[action][key] += details[action].get(elem_type, 0)
         
-        # Get users with changesets needing review
-        users_needing_review = {}
+        # Ensure all changesets have validation set (re-validate if missing or invalid)
+        # This is critical - validation must be present and correct for filtering to work
         for cs in changesets:
-            validation_status = cs.get('validation', {}).get('status', 'valid')
+            if 'validation' not in cs or not cs.get('validation') or not isinstance(cs.get('validation'), dict):
+                cs['validation'] = validate_changeset(cs)
+        
+        # Get users with changesets needing review
+        # IMPORTANT: Only count users who have changesets with status == 'needs_review'
+        users_needing_review = {}
+        total_changesets_checked = 0
+        needs_review_count = 0
+        
+        for cs in changesets:
+            total_changesets_checked += 1
+            
+            # Safely get validation status, ensuring it exists and is valid
+            validation = cs.get('validation', {})
+            if not isinstance(validation, dict):
+                # If validation is not a dict, re-validate
+                cs['validation'] = validate_changeset(cs)
+                validation = cs['validation']
+            
+            validation_status = validation.get('status', 'valid')
+            
+            # CRITICAL: Only include users who have changesets that actually need review
+            # Must be exactly 'needs_review' - not 'valid', not empty, not None
             if validation_status == 'needs_review':
+                needs_review_count += 1
                 user = cs.get('user', 'Unknown')
-                users_needing_review[user] = users_needing_review.get(user, 0) + 1
+                # Only count valid usernames
+                if user and user != 'Unknown' and user.strip():
+                    users_needing_review[user] = users_needing_review.get(user, 0) + 1
+        
+        # Debug logging to help identify issues
+        print(f"📊 Validation check: {total_changesets_checked} changesets checked, {needs_review_count} need review, {len(users_needing_review)} unique users")
+        
+        # Additional safety check: if somehow we got all users, log a warning
+        if len(users_needing_review) > len(changesets) * 0.5:  # More than 50% of changesets
+            print(f"⚠️ WARNING: Suspiciously high number of users needing review ({len(users_needing_review)}/{len(changesets)} changesets)")
+            print(f"   Sample validation statuses: {[cs.get('validation', {}).get('status', 'missing') for cs in changesets[:5]]}")
         
         # Sort by number of changesets needing review
         sorted_users = sorted(users_needing_review.items(), key=lambda x: x[1], reverse=True)[:10]

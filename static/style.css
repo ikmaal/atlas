@@ -58,9 +58,10 @@ body {
 .sidenav-logo {
     width: 32px;
     height: 32px;
-    color: var(--primary-color);
     flex-shrink: 0;
-    animation: logoRotate 10s linear infinite;
+    object-fit: contain;
+    /* Removed rotation animation - uncomment if you want the logo to rotate */
+    /* animation: logoRotate 10s linear infinite; */
 }
 
 @keyframes logoRotate {
@@ -2362,7 +2363,6 @@ body {
     .sidenav-logo {
         width: 28px;
         height: 28px;
-        color: var(--primary-color);
     }
     
     .sidenav-brand-title {
@@ -4387,17 +4387,19 @@ body {
 .atlas-message-avatar {
     width: 40px;
     height: 40px;
-    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .atlas-message-assistant .atlas-message-avatar {
-    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-    color: white;
+    background: transparent;
+    padding: 0;
+    border-radius: 0;
+    box-shadow: none;
+    width: auto;
+    height: 40px;
 }
 
 .atlas-message-user .atlas-message-avatar {
