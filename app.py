@@ -942,15 +942,14 @@ def is_changeset_in_singapore(changeset):
     """Legacy wrapper - checks if changeset is in Singapore region"""
     return is_changeset_in_region(changeset, 'singapore')
 
-# Cache for ERP checks (detects highway=turning_loop but flags as ERP)
+# Cache for ERP (name=ERP) checks
 erp_cache = {}
 
 def check_changeset_has_erp(changeset_id):
     """
-    Check if a changeset modifies any elements with highway=turning_loop tag
-    Returns: tuple (has_erp, count) where count is number of turning_loop elements modified
+    Check if a changeset modifies any elements with name=ERP tag
+    Returns: tuple (has_erp, count) where count is number of ERP elements modified
     Uses cache to avoid repeated API calls
-    Note: This detects highway=turning_loop but flags as ERP for notification purposes
     """
     # Check cache first
     if changeset_id in erp_cache:
@@ -964,7 +963,7 @@ def check_changeset_has_erp(changeset_id):
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
         
-        # Parse XML to check for highway=turning_loop tags
+        # Parse XML to check for name=ERP tags
         root = ET.fromstring(response.content)
         
         erp_count = 0
@@ -979,10 +978,10 @@ def check_changeset_has_erp(changeset_id):
                     elements = action_elem.findall(elem_type)
                     
                     for elem in elements:
-                        # Check all tags for highway=turning_loop
+                        # Check all tags for name=ERP
                         tags = elem.findall('tag')
                         for tag in tags:
-                            if tag.get('k') == 'highway' and tag.get('v') == 'turning_loop':
+                            if tag.get('k') == 'name' and tag.get('v') == 'ERP':
                                 erp_count += 1
                                 break  # Count each element only once
         
@@ -993,7 +992,7 @@ def check_changeset_has_erp(changeset_id):
         return has_erp, erp_count
         
     except Exception as e:
-        print(f"Error checking highway=turning_loop for changeset {changeset_id}: {e}")
+        print(f"Error checking name=ERP for changeset {changeset_id}: {e}")
         # Cache negative result to avoid retrying failed requests
         erp_cache[changeset_id] = (False, 0)
         return False, 0
@@ -1020,7 +1019,7 @@ def validate_changeset(changeset):
             validation['reasons'].append(f'Mass deletion detected: {total_deleted} deletions')
             validation['flags'].append('mass_deletion')
     
-    # Check for highway=turning_loop modifications (flagged as ERP for notifications)
+    # Check for name=ERP modifications
     cs_id = changeset.get('id')
     if cs_id:
         has_erp, erp_count = check_changeset_has_erp(cs_id)
