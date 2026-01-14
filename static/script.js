@@ -29,10 +29,123 @@ let currentFilters = {
     keyword: ''
 };
 
+// Persistent storage for needs_review changesets
+const STORAGE_KEY = 'atlas_needs_review_changesets';
+// Persistent storage for Grab changesets
+const GRAB_STORAGE_KEY = 'atlas_grab_changesets';
+
+// Load stored needs_review changesets from localStorage
+function loadStoredNeedsReviewChangesets() {
+    try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+            return JSON.parse(stored);
+        }
+    } catch (error) {
+        console.error('Error loading stored needs_review changesets:', error);
+    }
+    return {};
+}
+
+// Save needs_review changeset to localStorage
+function saveNeedsReviewChangeset(changeset) {
+    try {
+        const stored = loadStoredNeedsReviewChangesets();
+        const changesetId = changeset.id.toString();
+        
+        // Only save if not already stored (avoid duplicates)
+        if (!stored[changesetId]) {
+            // Add timestamp when stored
+            stored[changesetId] = {
+                ...changeset,
+                storedAt: new Date().toISOString(),
+                storedFromRegion: currentRegion
+            };
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+            console.log(`💾 Stored needs_review changeset ${changesetId} permanently`);
+        }
+    } catch (error) {
+        console.error('Error saving needs_review changeset:', error);
+    }
+}
+
+// Get all stored needs_review changesets as an array
+function getAllStoredNeedsReviewChangesets() {
+    const stored = loadStoredNeedsReviewChangesets();
+    const changesets = Object.values(stored);
+    
+    // Sort by created_at date (newest first), fallback to storedAt if created_at not available
+    return changesets.sort((a, b) => {
+        const dateA = a.created_at ? new Date(a.created_at) : (a.storedAt ? new Date(a.storedAt) : new Date(0));
+        const dateB = b.created_at ? new Date(b.created_at) : (b.storedAt ? new Date(b.storedAt) : new Date(0));
+        return dateB - dateA; // Newest first
+    });
+}
+
+// Load stored Grab changesets from localStorage
+function loadStoredGrabChangesets() {
+    try {
+        const stored = localStorage.getItem(GRAB_STORAGE_KEY);
+        if (stored) {
+            return JSON.parse(stored);
+        }
+    } catch (error) {
+        console.error('Error loading stored Grab changesets:', error);
+    }
+    return {};
+}
+
+// Save Grab changeset to localStorage
+function saveGrabChangeset(changeset) {
+    try {
+        const stored = loadStoredGrabChangesets();
+        const changesetId = changeset.id.toString();
+        
+        // Only save if not already stored (avoid duplicates)
+        if (!stored[changesetId]) {
+            // Add timestamp when stored
+            stored[changesetId] = {
+                ...changeset,
+                storedAt: new Date().toISOString(),
+                storedFromRegion: currentRegion
+            };
+            localStorage.setItem(GRAB_STORAGE_KEY, JSON.stringify(stored));
+            console.log(`💾 Stored Grab changeset ${changesetId} permanently`);
+        }
+    } catch (error) {
+        console.error('Error saving Grab changeset:', error);
+    }
+}
+
+// Get all stored Grab changesets as an array
+function getAllStoredGrabChangesets() {
+    const stored = loadStoredGrabChangesets();
+    const changesets = Object.values(stored);
+    
+    // Sort by created_at date (newest first), fallback to storedAt if created_at not available
+    return changesets.sort((a, b) => {
+        const dateA = a.created_at ? new Date(a.created_at) : (a.storedAt ? new Date(a.storedAt) : new Date(0));
+        const dateB = b.created_at ? new Date(b.created_at) : (b.storedAt ? new Date(b.storedAt) : new Date(0));
+        return dateB - dateA; // Newest first
+    });
+}
+
 // Initialize the application
 document.addEventListener('DOMContentLoaded', async function() {
     // Load regions first
     await loadRegions();
+    
+    // Log stored needs_review changesets count
+    const storedCount = Object.keys(loadStoredNeedsReviewChangesets()).length;
+    if (storedCount > 0) {
+        console.log(`💾 Loaded ${storedCount} stored needs_review changesets from database`);
+    }
+    
+    // Log stored Grab changesets count
+    const storedGrabCount = Object.keys(loadStoredGrabChangesets()).length;
+    if (storedGrabCount > 0) {
+        console.log(`💾 Loaded ${storedGrabCount} stored Grab changesets from database`);
+    }
     
     initMap();
     loadData();
@@ -367,9 +480,60 @@ function resetFilters() {
 
 // Apply filters to changesets
 function applyFilters() {
-    if (!changesets || changesets.length === 0) return;
+    let changesetsToFilter = changesets || [];
+    
+    // If filtering by needs_review, include stored needs_review changesets
+    if (currentFilters.validity === 'needs_review') {
+        const storedNeedsReview = getAllStoredNeedsReviewChangesets();
+        const currentChangesetIds = new Set(changesetsToFilter.map(cs => cs.id.toString()));
+        
+        // Add stored changesets that aren't already in current changesets
+        storedNeedsReview.forEach(storedCs => {
+            if (!currentChangesetIds.has(storedCs.id.toString())) {
+                changesetsToFilter.push(storedCs);
+            }
+        });
+        
+        console.log(`🔍 Including ${storedNeedsReview.length} stored needs_review changesets`);
+    }
+    
+    // If filtering by grab, include stored Grab changesets
+    if (currentFilters.validity === 'grab') {
+        const storedGrab = getAllStoredGrabChangesets();
+        const currentChangesetIds = new Set(changesetsToFilter.map(cs => cs.id.toString()));
+        
+        // Add stored changesets that aren't already in current changesets
+        storedGrab.forEach(storedCs => {
+            if (!currentChangesetIds.has(storedCs.id.toString())) {
+                changesetsToFilter.push(storedCs);
+            }
+        });
+        
+        console.log(`🔍 Including ${storedGrab.length} stored Grab changesets`);
+    }
 
-    let filtered = changesets.filter(cs => {
+    if (changesetsToFilter.length === 0) {
+        // Handle empty state
+        const container = document.getElementById('changesetsList');
+        if (container) {
+            const regionName = currentRegionData?.name || 'the selected';
+            container.innerHTML = `
+                <div class="empty-state">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="8" x2="12" y2="12"></line>
+                        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                    </svg>
+                    <h3>No Changesets Found</h3>
+                    <p>No changesets match your filters in the ${regionName} region.</p>
+                </div>
+            `;
+        }
+        updateMap([]);
+        return;
+    }
+
+    let filtered = changesetsToFilter.filter(cs => {
         // Filter by search (username)
         const matchesSearch = currentFilters.search === '' || 
                              cs.user.toLowerCase().includes(currentFilters.search);
@@ -380,8 +544,16 @@ function applyFilters() {
 
         // Filter by validity
         const validityStatus = cs.validation ? cs.validation.status : 'valid';
-        const matchesValidity = currentFilters.validity === 'all' || 
-                               validityStatus === currentFilters.validity;
+        let matchesValidity = false;
+        
+        if (currentFilters.validity === 'all') {
+            matchesValidity = true;
+        } else if (currentFilters.validity === 'grab') {
+            // Filter for Grab usernames (starting with "GrabSG")
+            matchesValidity = cs.user && cs.user.startsWith('GrabSG');
+        } else {
+            matchesValidity = validityStatus === currentFilters.validity;
+        }
 
         return matchesSearch && matchesKeyword && matchesValidity;
     });
@@ -852,10 +1024,22 @@ async function loadData() {
         if (changesetsData.success) {
             changesets = changesetsData.changesets;
             console.log('✅ Setting changesets array:', changesets.length);
-            updateChangesetsList(changesets);
-            console.log('✅ Updated changesets list');
-            updateMap(changesets);
-            console.log('✅ Updated map');
+            
+            // Save any needs_review changesets to persistent storage
+            changesets.forEach(cs => {
+                if (cs.validation && cs.validation.status === 'needs_review') {
+                    saveNeedsReviewChangeset(cs);
+                }
+                
+                // Save Grab changesets (usernames starting with "GrabSG")
+                if (cs.user && cs.user.startsWith('GrabSG')) {
+                    saveGrabChangeset(cs);
+                }
+            });
+            
+            // Apply current filters (this will include stored needs_review changesets if filter is active)
+            applyFilters();
+            console.log('✅ Updated changesets list and applied filters');
         } else {
             console.error('❌ Changesets API returned success: false');
         }

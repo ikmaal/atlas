@@ -244,6 +244,18 @@
                                     </div>
                                 </div>
                                 
+                                <!-- Validity Filter -->
+                                <div style="padding: 12px 20px; border-bottom: 1px solid var(--border-color);">
+                                    <div class="filter-buttons">
+                                        <button class="filter-btn active" data-filter="all">All</button>
+                                        <button class="filter-btn" data-filter="needs_review">Needs Review</button>
+                                        <button class="filter-btn" data-filter="grab">Grab</button>
+                                    </div>
+                                    <div style="margin-top: 8px; font-size: 0.65rem; color: var(--text-secondary);">
+                                        Fetching changesets from the past 24 hours
+                                    </div>
+                                </div>
+                                
                                 <!-- Filters -->
                                 <div class="filters-container" id="filtersContainer" style="display: none;">
                                     <div class="filter-row">
@@ -269,20 +281,6 @@
                                                 Search Keywords
                                             </label>
                                             <input type="text" id="keywordFilter" class="filter-input" placeholder="Filter by changeset comment...">
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="filter-group">
-                                        <label class="filter-label">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
-                                            </svg>
-                                            Validity
-                                        </label>
-                                        <div class="filter-buttons">
-                                            <button class="filter-btn active" data-filter="all">All</button>
-                                            <button class="filter-btn" data-filter="valid">Valid</button>
-                                            <button class="filter-btn" data-filter="needs_review">Needs Review</button>
                                         </div>
                                     </div>
                                 </div>
