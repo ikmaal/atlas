@@ -1163,6 +1163,22 @@ function updateChangesetsList(changesets) {
             }
         }
         
+        // Add mass deletion tag badge if present
+        let massDeletionHTML = '';
+        if (cs.tags && cs.tags.mass_deletion === 'yes') {
+            const deletedCount = cs.tags.deleted_count || cs.details?.total_deleted || '50+';
+            massDeletionHTML = `<span class="badge badge-mass-deletion" title="Mass deletion: ${deletedCount} elements deleted">Mass Deletion</span>`;
+        } else if (cs.validation && cs.validation.status === 'needs_review' && cs.details && cs.details.total_deleted >= 50) {
+            // Fallback: Check if it should have the tag but doesn't (for debugging)
+            console.warn(`Changeset ${cs.id} should have mass_deletion tag but doesn't. Tags:`, cs.tags, 'Deleted:', cs.details.total_deleted);
+        }
+        
+        // Add ERP badge if name=ERP detected
+        let erpBadgeHTML = '';
+        if (cs.validation && cs.validation.flags && cs.validation.flags.includes('erp')) {
+            erpBadgeHTML = `<span class="badge badge-erp" title="ERP modification detected">ERP</span>`;
+        }
+        
         return `
         <div class="changeset-item ${cs.validation && cs.validation.status !== 'valid' ? 'changeset-flagged' : ''}">
             <div class="changeset-header">
@@ -1172,6 +1188,8 @@ function updateChangesetsList(changesets) {
                 </div>
                 <div class="changeset-header-right">
                     ${validationHTML}
+                    ${massDeletionHTML}
+                    ${erpBadgeHTML}
                     <button class="comparison-btn" onclick="showChangesetComparison('${cs.id}')" title="Compare before/after changes">
                         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polyline points="16 18 22 12 16 6"></polyline>

@@ -232,6 +232,310 @@ CHANGESET_TIME_RANGE_HOURS = int(os.environ.get('CHANGESET_TIME_RANGE_HOURS', '2
 changeset_details_cache = {}
 
 # ============================================
+# Slack Configuration
+# ============================================
+
+SLACK_WEBHOOK_URL = os.environ.get('SLACK_WEBHOOK_URL', '')
+SLACK_ALERTS_ENABLED = os.environ.get('SLACK_ALERTS_ENABLED', 'false').lower() == 'true'
+# Detect if using Slack Workflow (workflow URLs contain '/triggers/')
+SLACK_IS_WORKFLOW = '/triggers/' in SLACK_WEBHOOK_URL if SLACK_WEBHOOK_URL else False
+
+# Track alerted changesets to avoid duplicate notifications
+ALERTED_CHANGESETS_FILE = '.alerted_changesets.json'
+
+def load_alerted_changesets():
+    """Load previously alerted changesets from file"""
+    if os.path.exists(ALERTED_CHANGESETS_FILE):
+        try:
+            with open(ALERTED_CHANGESETS_FILE, 'r') as f:
+                data = json.load(f)
+                return set(data.get('changesets', []))
+        except Exception as e:
+            print(f"⚠️ Error loading alerted changesets: {e}")
+            return set()
+    return set()
+
+def save_alerted_changesets(changesets_set):
+    """Save alerted changesets to file"""
+    try:
+        with open(ALERTED_CHANGESETS_FILE, 'w') as f:
+            json.dump({'changesets': list(changesets_set)}, f)
+    except Exception as e:
+        print(f"⚠️ Error saving alerted changesets: {e}")
+
+# Load previously alerted changesets on startup
+alerted_changesets = load_alerted_changesets()
+if alerted_changesets:
+    print(f"📋 Loaded {len(alerted_changesets)} previously alerted changesets")
+
+def send_slack_notification(changeset):
+    """Send Slack notification for needs_review changesets"""
+    if not SLACK_WEBHOOK_URL or not SLACK_ALERTS_ENABLED:
+        if not SLACK_WEBHOOK_URL:
+            print("⚠️ Slack webhook URL not configured")
+        if not SLACK_ALERTS_ENABLED:
+            print("⚠️ Slack alerts not enabled")
+        return False
+    
+    cs_id = changeset.get('id')
+    if not cs_id:
+        return False
+    
+    # Convert to string for consistent comparison
+    cs_id_str = str(cs_id)
+    
+    # Check if already alerted (avoid duplicates)
+    if cs_id_str in alerted_changesets:
+        print(f"⏭️ Skipping changeset {cs_id_str} - already notified")
+        return False
+    
+    try:
+        validation = changeset.get('validation', {})
+        status = validation.get('status', 'valid')
+        
+        # Only send for needs_review changesets
+        if status != 'needs_review':
+            return False
+        
+        # Mark as alerted and save to file (use string for consistency)
+        alerted_changesets.add(cs_id_str)
+        save_alerted_changesets(alerted_changesets)
+        print(f"📝 Marked changeset {cs_id_str} as alerted")
+        
+        # Prepare changeset data
+        user = changeset.get('user', 'Unknown')
+        comment = changeset.get('comment', 'No comment')
+        created_at = changeset.get('created_at', 'Unknown')
+        
+        details = changeset.get('details', {})
+        created_count = details.get('total_created', 0)
+        modified_count = details.get('total_modified', 0)
+        deleted_count = details.get('total_deleted', 0)
+        total_changes = created_count + modified_count + deleted_count
+        
+        reasons = validation.get('reasons', [])
+        reason_text = '\n'.join([f'• {reason}' for reason in reasons]) if reasons else 'Mass deletion detected'
+        
+        # Check if this is a mass deletion or ERP changeset
+        flags = validation.get('flags', [])
+        is_mass_deletion = 'mass_deletion' in flags
+        is_erp = 'erp' in flags
+        
+        # Build OSM links
+        osm_link = f"https://www.openstreetmap.org/changeset/{cs_id}"
+        osmcha_link = f"https://osmcha.org/changesets/{cs_id}"
+        
+        # Determine header text based on changeset type
+        if is_mass_deletion:
+            header_text = "⚠️ Mass Deletion Changeset Detected"
+            status_text = "Mass Deletion Detected"
+        elif is_erp:
+            header_text = "ERP Changeset Detected"
+            status_text = "ERP Detected"
+        else:
+            header_text = "🔍 Changeset Needs Review"
+            status_text = "Needs Review"
+        
+        # Determine warning_flags message based on changeset type
+        if is_mass_deletion:
+            warning_flags_text = "Mass Deletion Changeset Detected"
+        elif is_erp:
+            warning_flags_text = "ERP Modification Changeset Detected"
+        else:
+            warning_flags_text = reason_text if reasons else "Needs review"
+        
+        # Check if using Slack Workflow (different format required)
+        if SLACK_IS_WORKFLOW:
+            # Slack Workflow format - simple key-value pairs
+            slack_message = {
+                "changeset_id": str(cs_id),
+                "user": str(user),
+                "total_changes": str(total_changes),
+                "created": str(created_count),
+                "modified": str(modified_count),
+                "deleted": str(deleted_count),
+                "warning_flags": warning_flags_text,
+                "comment": str(comment) if comment and comment != 'No comment' else "No comment",
+                "source": str(changeset.get('tags', {}).get('source', 'Not specified')),
+                "created_at": str(created_at),
+                "osm_link": osm_link,
+                "osmcha_link": osmcha_link,
+                "status": status_text
+            }
+        else:
+            # Regular Incoming Webhook format - Block Kit
+            slack_message = {
+                "blocks": [
+                    {
+                        "type": "header",
+                        "text": {
+                            "type": "plain_text",
+                            "text": header_text,
+                            "emoji": True
+                        }
+                    },
+                    {
+                        "type": "section",
+                        "fields": [
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*Changeset ID:*\n<{osm_link}|{cs_id}>"
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*User:*\n{user}"
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*Created:*\n{created_at}"
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*Total Changes:*\n{total_changes}"
+                            }
+                        ]
+                    },
+                    {
+                        "type": "section",
+                        "fields": [
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*Created:* {created_count}"
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*Modified:* {modified_count}"
+                            },
+                            {
+                                "type": "mrkdwn",
+                                "text": f"*Deleted:* {deleted_count}"
+                            }
+                        ]
+                    }
+                ]
+            }
+            
+            # Add comment if available
+            if comment and comment != 'No comment':
+                slack_message["blocks"].append({
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*Comment:*\n{comment}"
+                    }
+                })
+            
+            # Add reasons
+            slack_message["blocks"].append({
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*Reasons:*\n{reason_text}"
+                }
+            })
+            
+            # Add divider
+            slack_message["blocks"].append({
+                "type": "divider"
+            })
+            
+            # Add action buttons
+            slack_message["blocks"].append({
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "🗺️ View on OSM",
+                            "emoji": True
+                        },
+                        "url": osm_link,
+                        "style": "primary"
+                    },
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "🔍 View on OSMCha",
+                            "emoji": True
+                        },
+                        "url": osmcha_link
+                    }
+                ]
+            })
+        
+        # Send to Slack
+        try:
+            response = requests.post(
+                SLACK_WEBHOOK_URL, 
+                json=slack_message, 
+                timeout=10,
+                verify=True  # SSL verification
+            )
+            
+            if response.status_code == 200:
+                print(f"✅ Slack notification sent successfully for changeset #{cs_id_str}")
+                return True
+            else:
+                print(f"❌ Failed to send Slack notification: HTTP {response.status_code}")
+                print(f"   Response: {response.text[:200]}")
+                # Remove from alerted set if failed so it can be retried
+                alerted_changesets.discard(cs_id_str)
+                save_alerted_changesets(alerted_changesets)
+                return False
+                
+        except requests.exceptions.ConnectionError as e:
+            print(f"❌ Connection Error: Unable to connect to Slack webhook")
+            print(f"   Webhook URL: {SLACK_WEBHOOK_URL[:50]}...")
+            print(f"   Error details: {str(e)}")
+            print(f"   Possible causes:")
+            print(f"   - Check your internet connection")
+            print(f"   - Verify the webhook URL is correct")
+            print(f"   - Check if firewall is blocking HTTPS requests")
+            print(f"   - Ensure Slack webhook URL is still valid")
+            alerted_changesets.discard(cs_id_str)
+            save_alerted_changesets(alerted_changesets)
+            return False
+            
+        except requests.exceptions.Timeout as e:
+            print(f"❌ Timeout Error: Request to Slack timed out after 10 seconds")
+            print(f"   Changeset ID: {cs_id_str}")
+            print(f"   Error details: {str(e)}")
+            alerted_changesets.discard(cs_id_str)
+            save_alerted_changesets(alerted_changesets)
+            return False
+            
+        except requests.exceptions.SSLError as e:
+            print(f"❌ SSL Error: SSL certificate verification failed")
+            print(f"   Changeset ID: {cs_id_str}")
+            print(f"   Error details: {str(e)}")
+            print(f"   This might indicate a network/proxy issue")
+            alerted_changesets.discard(cs_id_str)
+            save_alerted_changesets(alerted_changesets)
+            return False
+            
+        except requests.exceptions.RequestException as e:
+            print(f"❌ Request Error: {type(e).__name__}")
+            print(f"   Changeset ID: {cs_id_str}")
+            print(f"   Error details: {str(e)}")
+            alerted_changesets.discard(cs_id_str)
+            save_alerted_changesets(alerted_changesets)
+            return False
+            
+    except Exception as e:
+        print(f"❌ Unexpected error sending Slack notification: {type(e).__name__}")
+        print(f"   Changeset ID: {cs_id_str if 'cs_id_str' in locals() else 'unknown'}")
+        print(f"   Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        # Remove from alerted set if failed so it can be retried
+        if 'cs_id_str' in locals():
+            alerted_changesets.discard(cs_id_str)
+            save_alerted_changesets(alerted_changesets)
+        return False
+
+# ============================================
 # Google Sheets Configuration
 # ============================================
 
@@ -393,13 +697,103 @@ if GOOGLE_SHEETS_ENABLED:
 else:
     print("📊 Google Sheets: ⚠️ DISABLED (google_credentials.json not found)")
 
+# Print Slack notifications status on startup
+if SLACK_ALERTS_ENABLED and SLACK_WEBHOOK_URL:
+    print("📢 Slack Notifications: ✅ ENABLED")
+    print(f"   Webhook URL configured: {SLACK_WEBHOOK_URL[:30]}...")
+elif SLACK_ALERTS_ENABLED and not SLACK_WEBHOOK_URL:
+    print("📢 Slack Notifications: ⚠️ ENABLED but no webhook URL configured")
+    print("   Set SLACK_WEBHOOK_URL environment variable to enable")
+else:
+    print("📢 Slack Notifications: ⚠️ DISABLED (set SLACK_ALERTS_ENABLED=true to enable)")
+
 @app.route('/api/cache/clear')
 def clear_cache():
     """Clear the changeset details cache"""
-    global changeset_details_cache
+    global changeset_details_cache, erp_cache
     count = len(changeset_details_cache)
     changeset_details_cache.clear()
+    erp_cache.clear()
     return jsonify({'success': True, 'message': f'Cleared {count} cached changesets'})
+
+@app.route('/api/test/slack', methods=['POST'])
+def test_slack_notification():
+    """Test endpoint to send a test Slack notification"""
+    if not SLACK_ALERTS_ENABLED:
+        return jsonify({
+            'success': False,
+            'error': 'Slack notifications not enabled. Set SLACK_ALERTS_ENABLED=true'
+        }), 400
+    
+    if not SLACK_WEBHOOK_URL:
+        return jsonify({
+            'success': False,
+            'error': 'SLACK_WEBHOOK_URL not configured. Set it as an environment variable.'
+        }), 400
+    
+    # Validate webhook URL format
+    if not SLACK_WEBHOOK_URL.startswith('https://hooks.slack.com/services/'):
+        return jsonify({
+            'success': False,
+            'error': f'Invalid webhook URL format. Should start with https://hooks.slack.com/services/',
+            'current_url': SLACK_WEBHOOK_URL[:50] + '...' if len(SLACK_WEBHOOK_URL) > 50 else SLACK_WEBHOOK_URL
+        }), 400
+    
+    # Test basic connectivity first
+    try:
+        test_response = requests.get('https://hooks.slack.com', timeout=5)
+        print(f"✅ Can reach Slack servers (status: {test_response.status_code})")
+    except requests.exceptions.ConnectionError:
+        return jsonify({
+            'success': False,
+            'error': 'Cannot connect to Slack servers. Check your internet connection and firewall settings.',
+            'troubleshooting': [
+                'Check your internet connection',
+                'Verify firewall allows HTTPS outbound connections',
+                'Check if you need to configure a proxy',
+                'Try accessing https://hooks.slack.com in your browser'
+            ]
+        }), 500
+    except Exception as e:
+        print(f"⚠️ Connectivity test warning: {e}")
+    
+    # Create a test changeset with needs_review status
+    test_changeset = {
+        'id': '999999999',
+        'user': 'TestUser',
+        'comment': 'This is a test changeset for Slack notification testing',
+        'created_at': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC'),
+        'validation': {
+            'status': 'needs_review',
+            'reasons': ['Mass deletion detected: 75 deletions', 'Test notification']
+        },
+        'details': {
+            'total_created': 10,
+            'total_modified': 15,
+            'total_deleted': 75
+        },
+        'tags': {
+            'comment': 'This is a test changeset for Slack notification testing',
+            'source': 'test'
+        }
+    }
+    
+    # Temporarily remove from alerted set to allow test
+    alerted_changesets.discard('999999999')
+    
+    # Send test notification
+    result = send_slack_notification(test_changeset)
+    
+    if result:
+        return jsonify({
+            'success': True,
+            'message': 'Test Slack notification sent successfully! Check your Slack channel.'
+        })
+    else:
+        return jsonify({
+            'success': False,
+            'error': 'Failed to send test notification. Check server logs for details.'
+        }), 500
 
 # Notes storage configuration
 NOTES_FILE = 'notes.json'
@@ -548,6 +942,62 @@ def is_changeset_in_singapore(changeset):
     """Legacy wrapper - checks if changeset is in Singapore region"""
     return is_changeset_in_region(changeset, 'singapore')
 
+# Cache for ERP checks (detects highway=turning_loop but flags as ERP)
+erp_cache = {}
+
+def check_changeset_has_erp(changeset_id):
+    """
+    Check if a changeset modifies any elements with highway=turning_loop tag
+    Returns: tuple (has_erp, count) where count is number of turning_loop elements modified
+    Uses cache to avoid repeated API calls
+    Note: This detects highway=turning_loop but flags as ERP for notification purposes
+    """
+    # Check cache first
+    if changeset_id in erp_cache:
+        cached_result = erp_cache[changeset_id]
+        return cached_result[0], cached_result[1]
+    
+    try:
+        url = f"https://api.openstreetmap.org/api/0.6/changeset/{changeset_id}/download"
+        headers = {'User-Agent': 'ATLAS-Singapore/1.0'}
+        
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        # Parse XML to check for highway=turning_loop tags
+        root = ET.fromstring(response.content)
+        
+        erp_count = 0
+        
+        # Check all actions (create, modify, delete)
+        for action in ['create', 'modify', 'delete']:
+            action_elems = root.findall(action)
+            
+            for action_elem in action_elems:
+                # Check all element types (node, way, relation)
+                for elem_type in ['node', 'way', 'relation']:
+                    elements = action_elem.findall(elem_type)
+                    
+                    for elem in elements:
+                        # Check all tags for highway=turning_loop
+                        tags = elem.findall('tag')
+                        for tag in tags:
+                            if tag.get('k') == 'highway' and tag.get('v') == 'turning_loop':
+                                erp_count += 1
+                                break  # Count each element only once
+        
+        # Cache the result
+        has_erp = erp_count > 0
+        erp_cache[changeset_id] = (has_erp, erp_count)
+        
+        return has_erp, erp_count
+        
+    except Exception as e:
+        print(f"Error checking highway=turning_loop for changeset {changeset_id}: {e}")
+        # Cache negative result to avoid retrying failed requests
+        erp_cache[changeset_id] = (False, 0)
+        return False, 0
+
 def validate_changeset(changeset):
     """
     Validate a changeset to detect patterns needing review
@@ -569,6 +1019,15 @@ def validate_changeset(changeset):
             validation['status'] = 'needs_review'
             validation['reasons'].append(f'Mass deletion detected: {total_deleted} deletions')
             validation['flags'].append('mass_deletion')
+    
+    # Check for highway=turning_loop modifications (flagged as ERP for notifications)
+    cs_id = changeset.get('id')
+    if cs_id:
+        has_erp, erp_count = check_changeset_has_erp(cs_id)
+        if has_erp:
+            validation['status'] = 'needs_review'
+            validation['reasons'].append(f'ERP modification detected: {erp_count} ERP element(s) modified')
+            validation['flags'].append('erp')
     
     return validation
 
@@ -820,12 +1279,67 @@ def fetch_osm_changesets(bbox=None, limit=200, region=None):
             else:
                 print(f"   ⚠️  Sample changeset {sample['id']} has no details!")
         
-        # Validate all changesets and log those needing review
+        # Validate all changesets and add tags
         for cs in changesets:
             cs['validation'] = validate_changeset(cs)
             
-            # Log to Google Sheets if validation status is 'needs_review'
+            # Add "mass_deletion" tag for needs_review changesets with 50+ deletions
             if cs['validation'].get('status') == 'needs_review':
+                details = cs.get('details', {})
+                total_deleted = details.get('total_deleted', 0)
+                
+                if total_deleted >= 50:
+                    # Ensure tags dictionary exists
+                    if 'tags' not in cs:
+                        cs['tags'] = {}
+                    
+                    # Add mass_deletion tag
+                    cs['tags']['mass_deletion'] = 'yes'
+                    cs['tags']['deleted_count'] = str(total_deleted)
+                    print(f"🏷️ Added mass_deletion tag to changeset {cs.get('id')} ({total_deleted} deletions)")
+                elif total_deleted > 0:
+                    # Debug: log if needs_review but less than 50 deletions (shouldn't happen)
+                    print(f"⚠️ Changeset {cs.get('id')} marked needs_review but only has {total_deleted} deletions")
+        
+        # Check if this is the initial load (no previously alerted changesets)
+        initial_load = len(alerted_changesets) == 0
+        
+        if initial_load:
+            # First time loading - mark all existing changesets as seen WITHOUT sending notifications
+            print(f"📋 Initial load: Marking {len(changesets)} existing changesets as seen (no notifications will be sent)")
+            for cs in changesets:
+                cs_id = cs.get('id')
+                if cs_id:
+                    alerted_changesets.add(str(cs_id))
+            save_alerted_changesets(alerted_changesets)
+            print(f"✅ Marked {len(alerted_changesets)} changesets as seen. Future NEW changesets will trigger notifications.")
+        else:
+            # Subsequent loads - only notify for NEW needs_review changesets that haven't been seen before
+            new_count = 0
+            skipped_count = 0
+            for cs in changesets:
+                cs_id = cs.get('id')
+                if cs_id:
+                    cs_id_str = str(cs_id)
+                    # Only send notifications for needs_review changesets
+                    if cs['validation'].get('status') == 'needs_review' and cs_id_str not in alerted_changesets:
+                        # This is a NEW needs_review changeset - send notification
+                        print(f"🆕 Detected NEW needs_review changeset: {cs_id_str} (User: {cs.get('user', 'Unknown')})")
+                        result = send_slack_notification(cs)
+                        if result:
+                            new_count += 1
+                        else:
+                            print(f"⚠️ Failed to send notification for changeset {cs_id_str}")
+                    else:
+                        skipped_count += 1
+            
+            if new_count > 0:
+                print(f"📢 Sent notifications for {new_count} new needs_review changeset(s)")
+            if skipped_count > 0:
+                print(f"⏭️ Skipped {skipped_count} already-notified or non-needs_review changeset(s)")
+            
+            # Also log to Google Sheets if validation status is 'needs_review' and Google Sheets enabled
+            if cs['validation'].get('status') == 'needs_review' and GOOGLE_SHEETS_ENABLED:
                 # Transform changeset data to match expected format for logging
                 details = cs.get('details', {})
                 log_data = {
@@ -2184,12 +2698,43 @@ def get_user_region_stats(username):
                 except Exception as e:
                     print(f"Error getting details for changeset {cs['id']}: {e}")
         
-        # Validate changesets and log those needing review
+        # Validate changesets and add tags
         for cs in changesets:
             cs['validation'] = validate_changeset(cs)
             
-            # Log to Google Sheets if validation status is 'needs_review'
+            # Add "mass_deletion" tag for needs_review changesets with 50+ deletions
             if cs['validation'].get('status') == 'needs_review':
+                details = cs.get('details', {})
+                total_deleted = details.get('total_deleted', 0)
+                
+                if total_deleted >= 50:
+                    # Ensure tags dictionary exists
+                    if 'tags' not in cs:
+                        cs['tags'] = {}
+                    
+                    # Add mass_deletion tag
+                    cs['tags']['mass_deletion'] = 'yes'
+                    cs['tags']['deleted_count'] = str(total_deleted)
+                    print(f"🏷️ Added mass_deletion tag to changeset {cs.get('id')} ({total_deleted} deletions)")
+        
+        # Only notify for NEW needs_review changesets (not already in alerted set)
+        # Skip notifications on initial load to avoid spamming existing changesets
+        if len(alerted_changesets) > 0:
+            new_count = 0
+            for cs in changesets:
+                cs_id = cs.get('id')
+                # Only send notifications for needs_review changesets
+                if cs_id and cs['validation'].get('status') == 'needs_review' and str(cs_id) not in alerted_changesets:
+                    # This is a NEW needs_review changeset - send notification
+                    send_slack_notification(cs)
+                    new_count += 1
+            
+            if new_count > 0:
+                print(f"📢 Sent notifications for {new_count} new needs_review changeset(s)")
+        
+        # Also log to Google Sheets if validation status is 'needs_review' and Google Sheets enabled
+        for cs in changesets:
+            if cs['validation'].get('status') == 'needs_review' and GOOGLE_SHEETS_ENABLED:
                 # Transform changeset data to match expected format for logging
                 details = cs.get('details', {})
                 log_data = {

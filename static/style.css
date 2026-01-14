@@ -1505,6 +1505,20 @@ body {
     color: white;
 }
 
+.badge-mass-deletion {
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #fca5a5;
+    font-weight: 600;
+}
+
+.badge-erp {
+    background: #f3e8ff;
+    color: #6b21a8;
+    border: 1px solid #c084fc;
+    font-weight: 600;
+}
+
 .badge-needs-review {
     background: #ffc107;
     color: #1a1a1a;
