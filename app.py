@@ -1232,11 +1232,11 @@ def fetch_osm_changesets(bbox=None, limit=200, region=None):
             newest = changesets[0]['created_at'][:10] if len(changesets) > 0 else 'N/A'
             print(f"   Date range: {newest} to {oldest}")
         
-        # Fetch detailed statistics for each changeset in parallel with increased workers
+        # Fetch detailed statistics for each changeset in parallel with reduced workers to avoid rate limiting
         print(f"🔍 Fetching detailed statistics for {len(changesets)} changesets...")
         details_start = time.time()
         
-        with ThreadPoolExecutor(max_workers=20) as executor:
+        with ThreadPoolExecutor(max_workers=5) as executor:
             future_to_cs = {executor.submit(fetch_changeset_details, cs['id']): cs for cs in changesets}
             
             completed = 0

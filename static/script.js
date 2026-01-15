@@ -152,6 +152,16 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     // Set up tab switching
     initTabs();
+    
+    // Initialize Atlas AI greeting (for compatibility)
+    if (typeof initAtlasGreeting === 'function') {
+        initAtlasGreeting();
+    }
+    
+    // Initialize Atlas logo hover introduction
+    if (typeof initAtlasLogoIntro === 'function') {
+        initAtlasLogoIntro();
+    }
 
     // Set up filters
     initFilters();
@@ -1937,6 +1947,19 @@ function initTabs() {
                 // Invalidate dashboard map size
                 if (typeof dashboardMap !== 'undefined' && dashboardMap) {
                     invalidateMapSize(dashboardMap);
+                }
+            } else if (targetTab === 'atlas-ai') {
+                // Initialize Atlas AI bubble with typewriter effect when tab is shown
+                if (typeof initAtlasBubble === 'function') {
+                    // Reset bubble text first
+                    const bubbleTextEl = document.getElementById('atlasBubbleText');
+                    if (bubbleTextEl) {
+                        bubbleTextEl.textContent = '';
+                    }
+                    // Trigger typewriter effect
+                    setTimeout(() => {
+                        initAtlasBubble();
+                    }, 100);
                 }
             } else if (targetTab === 'my-edits') {
                 // Initialize map if not already done

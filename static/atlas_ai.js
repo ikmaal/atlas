@@ -3,6 +3,96 @@
 // Store selected image
 let atlasSelectedImage = null;
 
+// Atlas introduction text
+const atlasIntroduction = "Greetings, traveler. I am Atlas, a seasoned explorer of these digital maps";
+
+// Typewriter effect for Atlas introduction popup
+let introTypewriterTimeout = null;
+let introTypewriterActive = false;
+
+function typewriterIntroEffect(element, text, speed = 30) {
+    if (!element) return;
+    
+    // Clear any existing typewriter
+    if (introTypewriterTimeout) {
+        clearTimeout(introTypewriterTimeout);
+    }
+    
+    element.textContent = '';
+    let i = 0;
+    const cursorEl = element.nextElementSibling;
+    
+    function type() {
+        if (i < text.length) {
+            element.textContent += text.charAt(i);
+            i++;
+            introTypewriterTimeout = setTimeout(type, speed);
+        } else {
+            // Hide cursor after typing is complete
+            if (cursorEl && cursorEl.classList.contains('atlas-intro-cursor')) {
+                cursorEl.style.display = 'none';
+            }
+            introTypewriterActive = false;
+        }
+    }
+    
+    // Show cursor before starting
+    if (cursorEl && cursorEl.classList.contains('atlas-intro-cursor')) {
+        cursorEl.style.display = 'inline-block';
+    }
+    
+    introTypewriterActive = true;
+    type();
+}
+
+// Initialize Atlas logo hover introduction
+function initAtlasLogoIntro() {
+    const logo = document.getElementById('atlasSidebarLogo');
+    const popup = document.getElementById('atlasIntroPopup');
+    const introText = document.getElementById('atlasIntroText');
+    
+    if (!logo || !popup || !introText) return;
+    
+    let hoverTimeout = null;
+    let hasShownIntro = false;
+    
+    logo.addEventListener('mouseenter', function() {
+        // Clear any existing timeout
+        if (hoverTimeout) {
+            clearTimeout(hoverTimeout);
+        }
+        
+        // Reset text if it was already shown
+        if (hasShownIntro) {
+            introText.textContent = '';
+            const cursor = popup.querySelector('.atlas-intro-cursor');
+            if (cursor) cursor.style.display = 'inline-block';
+        }
+        
+        // Start typewriter after a short delay
+        hoverTimeout = setTimeout(() => {
+            typewriterIntroEffect(introText, atlasIntroduction, 30);
+            hasShownIntro = true;
+        }, 300);
+    });
+    
+    logo.addEventListener('mouseleave', function() {
+        // Clear timeout if mouse leaves before popup appears
+        if (hoverTimeout) {
+            clearTimeout(hoverTimeout);
+        }
+        
+        // Reset intro text when mouse leaves
+        if (introTypewriterTimeout) {
+            clearTimeout(introTypewriterTimeout);
+        }
+        introText.textContent = '';
+        const cursor = popup.querySelector('.atlas-intro-cursor');
+        if (cursor) cursor.style.display = 'inline-block';
+        hasShownIntro = false;
+    });
+}
+
 // Initialize Atlas AI greeting
 function initAtlasGreeting() {
     const greetingEl = document.getElementById('atlasGreeting');
@@ -20,6 +110,88 @@ function initAtlasGreeting() {
     }
     
     greetingEl.textContent = greeting;
+}
+
+// Typewriter effect for Atlas text bubble
+function typewriterEffect(element, text, speed = 50) {
+    if (!element) return;
+    
+    element.textContent = '';
+    let i = 0;
+    const cursorEl = document.querySelector('.atlas-typewriter-cursor');
+    
+    function type() {
+        if (i < text.length) {
+            element.textContent += text.charAt(i);
+            i++;
+            setTimeout(type, speed);
+        } else {
+            // Hide cursor after typing is complete
+            if (cursorEl) {
+                cursorEl.style.display = 'none';
+            }
+        }
+    }
+    
+    // Show cursor before starting
+    if (cursorEl) {
+        cursorEl.style.display = 'inline-block';
+    }
+    
+    type();
+}
+
+// Adventurer greetings by time of day
+const adventurerGreetings = {
+    morning: [
+        "The dawn of exploration. What would you discover?",
+        "Morning finds us ready. What territory shall we chart?",
+        "A new day, new paths. What would you explore?",
+        "The sun rises on adventure. What discoveries await?",
+        "Greetings, explorer! The morning map unfolds. What interests you?",
+        "Another day of discovery begins. What would you like to know?"
+    ],
+    afternoon: [
+        "The journey continues. What discoveries await?",
+        "Afternoon brings new horizons. What would you explore?",
+        "The map unfolds. What secrets shall we uncover?",
+        "Well met, traveler! What path shall we tread?",
+        "The adventure continues. What territory interests you?",
+        "Afternoon finds us exploring. What would you discover?"
+    ],
+    evening: [
+        "As twilight falls, what mysteries beckon?",
+        "Evening finds us exploring. What would you discover?",
+        "The adventure continues. What path shall we tread?",
+        "The day's journey continues. What secrets await?",
+        "Evening brings reflection. What would you explore?",
+        "Well met, wanderer! What discoveries call to you?"
+    ]
+};
+
+// Initialize Atlas text bubble with typewriter effect
+function initAtlasBubble() {
+    const bubbleTextEl = document.getElementById('atlasBubbleText');
+    if (!bubbleTextEl) return;
+    
+    const hour = new Date().getHours();
+    let greetingList;
+    
+    if (hour < 12) {
+        greetingList = adventurerGreetings.morning;
+    } else if (hour < 17) {
+        greetingList = adventurerGreetings.afternoon;
+    } else {
+        greetingList = adventurerGreetings.evening;
+    }
+    
+    // Randomly select a greeting from the appropriate time-based list
+    const randomGreeting = greetingList[Math.floor(Math.random() * greetingList.length)];
+    
+    // Start typewriter effect after a short delay
+    setTimeout(() => {
+        typewriterEffect(bubbleTextEl, randomGreeting, 50);
+    }, 300);
 }
 
 // Show chat screen and hide welcome screen
@@ -46,6 +218,9 @@ function resetAtlasChat() {
     
     // Refresh greeting
     initAtlasGreeting();
+    
+    // Initialize bubble with typewriter effect
+    initAtlasBubble();
 }
 
 // Handle Enter key press in chat input
@@ -232,7 +407,7 @@ function addAtlasMessage(role, content, imageSrc = null) {
     if (role === 'assistant') {
         name = 'Atlas';
         avatarIcon = `
-            <img src="/static/logo.png" alt="Atlas Logo" style="height: 40px; width: auto; object-fit: contain;">
+            <img src="/static/atlas-icon.png" alt="Atlas Logo" style="height: 40px; width: 40px; object-fit: cover; border-radius: 50%;">
         `;
     } else {
         name = 'You';
@@ -293,7 +468,7 @@ function showAtlasLoading() {
     
     loadingDiv.innerHTML = `
         <div class="atlas-message-avatar atlas-avatar-typing">
-            <img src="/static/logo.png" alt="Atlas Logo" style="height: 40px; width: auto; object-fit: contain;">
+            <img src="/static/atlas-icon.png" alt="Atlas Logo" style="height: 40px; width: 40px; object-fit: cover; border-radius: 50%;">
         </div>
         <div class="atlas-message-content">
             <div class="atlas-message-header">

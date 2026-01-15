@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ATLAS</title>
-    <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='atlas-icon.png') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
@@ -30,7 +30,17 @@
         <aside class="sidenav">
             <!-- Branding -->
                 <div class="sidenav-brand">
-                    <img class="sidenav-logo" src="{{ url_for('static', filename='logo.png') }}" alt="ATLAS Logo">
+                    <div class="atlas-logo-container">
+                        <img class="sidenav-logo" id="atlasSidebarLogo" src="{{ url_for('static', filename='atlas-icon.png') }}" alt="ATLAS Logo">
+                        <div class="atlas-intro-popup" id="atlasIntroPopup">
+                            <div class="atlas-intro-bubble">
+                                <div class="atlas-intro-text-wrapper">
+                                    <span class="atlas-intro-text" id="atlasIntroText"></span>
+                                    <span class="atlas-intro-cursor">|</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                     <div class="sidenav-brand-text">
                         <span class="sidenav-brand-title">ATLAS</span>
                         <span class="sidenav-brand-subtitle">Singapore</span>
@@ -225,23 +235,8 @@
                         <div class="content-grid">
                             <!-- Recent Changesets -->
                             <div class="card changesets-card-full" style="box-shadow: none;">
-                                <div class="card-header">
-                                    <h2>
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                            <circle cx="12" cy="12" r="10"></circle>
-                                            <polyline points="12 6 12 12 16 14"></polyline>
-                                        </svg>
-                                        Recent Changesets
-                                    </h2>
-                                    <div style="display: flex; align-items: center; gap: 12px;">
-                                        <button class="filter-toggle-btn" id="filterToggleBtn" onclick="toggleFilters()" title="Toggle Filters">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
-                                            </svg>
-                                            <span>Filters</span>
-                                        </button>
+                                <div class="card-header" style="display: flex; justify-content: flex-end; padding: 12px 20px;">
                                     <div class="loading-spinner" id="changesetsLoading"></div>
-                                    </div>
                                 </div>
                                 
                                 <!-- Validity Filter -->
@@ -250,9 +245,12 @@
                                         <button class="filter-btn active" data-filter="all">All</button>
                                         <button class="filter-btn" data-filter="needs_review">Needs Review</button>
                                         <button class="filter-btn" data-filter="grab">Grab</button>
-                                    </div>
-                                    <div style="margin-top: 8px; font-size: 0.65rem; color: var(--text-secondary);">
-                                        Fetching changesets from the past 24 hours
+                                        <button class="filter-toggle-btn" id="filterToggleBtn" onclick="toggleFilters()" title="Toggle Filters" style="margin-left: auto;">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+                                            </svg>
+                                            <span>Filters</span>
+                                        </button>
                                     </div>
                                 </div>
                                 
@@ -456,9 +454,20 @@
                         <div class="atlas-ai-page">
                             <!-- Welcome Screen (shown when no messages) -->
                             <div class="atlas-welcome-screen" id="atlasWelcomeScreen">
-                                <!-- Greeting -->
-                                <h1 class="atlas-greeting" id="atlasGreeting">Good Afternoon</h1>
-                                <p class="atlas-subtitle">What's on <span class="atlas-highlight">your mind?</span></p>
+                                <!-- Atlas Icon with Text Bubble -->
+                                <div class="atlas-icon-bubble-container">
+                                    <div class="atlas-icon-bubble-wrapper">
+                                        <img src="{{ url_for('static', filename='atlas-icon.png') }}" alt="Atlas" class="atlas-icon-bubble-icon">
+                                        <div class="atlas-text-bubble">
+                                            <span class="atlas-bubble-text" id="atlasBubbleText"></span>
+                                            <span class="atlas-typewriter-cursor">|</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Greeting (hidden, kept for compatibility) -->
+                                <h1 class="atlas-greeting" id="atlasGreeting" style="display: none;">Good Afternoon</h1>
+                                <p class="atlas-subtitle" style="display: none;">What's on <span class="atlas-highlight">your mind?</span></p>
                                 
                                 <!-- Input Area -->
                                 <div class="atlas-input-card">
