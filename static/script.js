@@ -591,7 +591,7 @@ function getCurrentRegionBoundary() {
     return SINGAPORE_BOUNDARY_FALLBACK;
 }
 
-// Check if region has multi-polygon (like Malaysia with Peninsular and East Malaysia)
+// Check if region has multi-polygon
 function isMultiPolygonRegion() {
     return currentRegionData && currentRegionData.isMultiPolygon === true;
 }
@@ -1752,18 +1752,9 @@ async function loadUserProfile() {
                 </div>
             `;
         } else {
-            // Show login button
+            // Hide My Edits button and clear user section
             myEditsBtn.style.display = 'none';
-            userSection.innerHTML = `
-                <a href="/oauth/login" class="login-btn">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
-                        <polyline points="10 17 15 12 10 7"></polyline>
-                        <line x1="15" y1="12" x2="3" y2="12"></line>
-                    </svg>
-                    <span>Login with OSM</span>
-                </a>
-            `;
+            userSection.innerHTML = '';
         }
     } catch (error) {
         console.error('Error loading user profile:', error);

@@ -246,6 +246,7 @@ body {
 .region-switcher-container {
     padding: 8px 20px 16px 20px;
     border-bottom: 1px solid var(--border-color);
+    display: none; /* Hidden since only one region is available */
 }
 
 .region-switcher {
@@ -478,26 +479,6 @@ body {
     color: var(--text-primary);
 }
 
-.login-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 10px 16px;
-    background: var(--primary-color);
-    color: white;
-    border-radius: 8px;
-    font-size: 0.765rem;
-    font-weight: 600;
-    text-decoration: none;
-    transition: all 0.2s ease;
-}
-
-.login-btn:hover {
-    background: var(--secondary-color);
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
-}
 
 /* Main Content */
 .main-content {
@@ -5434,22 +5415,4 @@ body {
 .geo-area-card[data-area="east"] { --area-color: #f59e0b; }
 .geo-area-card[data-area="west"] { --area-color: #8b5cf6; }
 .geo-area-card[data-area="central"] { --area-color: #ef4444; }
-
-/* Malaysia states colors */
-.geo-area-card[data-area="johor"] { --area-color: #3b82f6; }
-.geo-area-card[data-area="selangor"] { --area-color: #10b981; }
-.geo-area-card[data-area="sabah"] { --area-color: #f59e0b; }
-.geo-area-card[data-area="sarawak"] { --area-color: #8b5cf6; }
-.geo-area-card[data-area="penang"] { --area-color: #ef4444; }
-.geo-area-card[data-area="perak"] { --area-color: #06b6d4; }
-.geo-area-card[data-area="kelantan"] { --area-color: #ec4899; }
-.geo-area-card[data-area="pahang"] { --area-color: #84cc16; }
-.geo-area-card[data-area="terengganu"] { --area-color: #f97316; }
-.geo-area-card[data-area="kedah"] { --area-color: #6366f1; }
-.geo-area-card[data-area="negeri-sembilan"] { --area-color: #14b8a6; }
-.geo-area-card[data-area="melaka"] { --area-color: #a855f7; }
-.geo-area-card[data-area="perlis"] { --area-color: #facc15; }
-.geo-area-card[data-area="kuala-lumpur"] { --area-color: #22c55e; }
-.geo-area-card[data-area="labuan"] { --area-color: #64748b; }
-.geo-area-card[data-area="putrajaya"] { --area-color: #0ea5e9; }
 

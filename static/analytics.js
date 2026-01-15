@@ -744,27 +744,6 @@ const REGION_AREAS = {
             { id: 'west', name: 'West', icon: '🏭', bounds: { minLat: 1.28, maxLat: 1.42, minLon: 103.60, maxLon: 103.75 } },
             { id: 'central', name: 'Central', icon: '🏙️', bounds: { minLat: 1.26, maxLat: 1.38, minLon: 103.78, maxLon: 103.88 } }
         ]
-    },
-    malaysia: {
-        name: 'Malaysia',
-        areas: [
-            { id: 'kuala-lumpur', name: 'Kuala Lumpur', icon: '🏙️', bounds: { minLat: 3.03, maxLat: 3.24, minLon: 101.58, maxLon: 101.80 } },
-            { id: 'selangor', name: 'Selangor', icon: '🏛️', bounds: { minLat: 2.65, maxLat: 3.85, minLon: 100.85, maxLon: 102.05 } },
-            { id: 'johor', name: 'Johor', icon: '🌉', bounds: { minLat: 1.28, maxLat: 2.95, minLon: 102.45, maxLon: 104.60 } },
-            { id: 'penang', name: 'Penang', icon: '🌴', bounds: { minLat: 5.12, maxLat: 5.55, minLon: 100.15, maxLon: 100.55 } },
-            { id: 'perak', name: 'Perak', icon: '⛏️', bounds: { minLat: 3.65, maxLat: 5.85, minLon: 100.20, maxLon: 101.60 } },
-            { id: 'pahang', name: 'Pahang', icon: '🏔️', bounds: { minLat: 2.45, maxLat: 4.70, minLon: 101.30, maxLon: 103.50 } },
-            { id: 'kelantan', name: 'Kelantan', icon: '🕌', bounds: { minLat: 4.50, maxLat: 6.25, minLon: 101.20, maxLon: 102.85 } },
-            { id: 'terengganu', name: 'Terengganu', icon: '🐢', bounds: { minLat: 4.00, maxLat: 5.90, minLon: 102.35, maxLon: 103.75 } },
-            { id: 'kedah', name: 'Kedah', icon: '🌾', bounds: { minLat: 5.35, maxLat: 6.75, minLon: 99.65, maxLon: 101.25 } },
-            { id: 'negeri-sembilan', name: 'Negeri Sembilan', icon: '🏰', bounds: { minLat: 2.45, maxLat: 3.15, minLon: 101.70, maxLon: 102.60 } },
-            { id: 'melaka', name: 'Melaka', icon: '🏛️', bounds: { minLat: 2.05, maxLat: 2.50, minLon: 102.10, maxLon: 102.60 } },
-            { id: 'sabah', name: 'Sabah', icon: '🦧', bounds: { minLat: 4.00, maxLat: 7.40, minLon: 115.55, maxLon: 119.30 } },
-            { id: 'sarawak', name: 'Sarawak', icon: '🦜', bounds: { minLat: 0.85, maxLat: 5.10, minLon: 109.50, maxLon: 115.85 } },
-            { id: 'perlis', name: 'Perlis', icon: '🌾', bounds: { minLat: 6.35, maxLat: 6.75, minLon: 100.05, maxLon: 100.45 } },
-            { id: 'putrajaya', name: 'Putrajaya', icon: '🏛️', bounds: { minLat: 2.88, maxLat: 2.97, minLon: 101.65, maxLon: 101.73 } },
-            { id: 'labuan', name: 'Labuan', icon: '🏝️', bounds: { minLat: 5.24, maxLat: 5.39, minLon: 115.15, maxLon: 115.32 } }
-        ]
     }
 };
 

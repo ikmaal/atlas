@@ -16,7 +16,7 @@
     <div id="regionLoadingOverlay" class="region-loading-overlay" style="display: none;">
         <div class="region-loading-content">
             <div class="region-loading-spinner"></div>
-            <div class="region-loading-text">Switching to <span id="regionLoadingName">Malaysia</span>...</div>
+            <div class="region-loading-text">Switching to <span id="regionLoadingName">Singapore</span>...</div>
             <div class="region-loading-subtext" id="regionLoadingStatus">Loading changesets and analytics</div>
             <div class="region-loading-progress-container">
                 <div class="region-loading-progress-bar" id="regionLoadingProgress"></div>
@@ -48,10 +48,9 @@
                 </div>
                 
                 <!-- Region Switcher -->
-                <div class="region-switcher-container">
+                <div class="region-switcher-container" style="display: none;">
                     <select id="regionSwitcher" class="region-switcher" onchange="switchRegion(this.value)" title="Switch Region">
                         <option value="singapore">🇸🇬 Singapore</option>
-                        <option value="malaysia">🇲🇾 Malaysia</option>
                     </select>
                 </div>
 
