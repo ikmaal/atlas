@@ -8,7 +8,6 @@ let myEditsMarkerCluster;
 let changesets = [];
 let myEditsChangesets = [];
 let mapViewMode = 'validation'; // Always show validation colors
-let currentCommentChangesetId = null;
 let visualizationLayer = null; // Layer for AI visualization
 let myEditsVisualizationLayer = null; // Layer for My Edits AI visualization
 
@@ -1210,11 +1209,6 @@ function updateChangesetsList(changesets) {
                     <a href="https://osmcha.org/changesets/${cs.id}" target="_blank" class="osmcha-btn" title="Analyze in OSMCha">
                         OSMCha
                     </a>
-                    <button class="comment-btn" onclick="openCommentModal('${cs.id}', '${escapeHtml(cs.user)}', '${escapeHtml(cs.comment)}')" title="Add comment">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                        </svg>
-                    </button>
                     <a href="https://www.openstreetmap.org/changeset/${cs.id}" target="_blank" class="changeset-id">
                         #${cs.id}
                     </a>
@@ -1844,11 +1838,6 @@ async function loadMyEdits() {
                         <a href="https://osmcha.org/changesets/${cs.id}" target="_blank" class="osmcha-btn" title="Analyze in OSMCha">
                             OSMCha
                         </a>
-                        <button class="comment-btn" onclick="openCommentModal('${cs.id}', '${escapeHtml(cs.user)}', '${escapeHtml(cs.comment)}')" title="Add comment">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                            </svg>
-                        </button>
                         <a href="https://www.openstreetmap.org/changeset/${cs.id}" target="_blank" class="changeset-id">
                             #${cs.id}
                         </a>
@@ -1967,132 +1956,7 @@ function initTabs() {
 }
 
 
-// Comment functionality
-function openCommentModal(changesetId, changesetUser, changesetComment) {
-    // Check if user is logged in
-    fetch('/api/user')
-        .then(response => response.json())
-        .then(data => {
-            if (!data.logged_in) {
-                alert('Please login to comment on changesets');
-                return;
-            }
-            
-            currentCommentChangesetId = changesetId;
-            
-            // Update modal with changeset info
-            const infoDiv = document.getElementById('commentChangesetInfo');
-            infoDiv.innerHTML = `
-                <div style="margin-bottom: 15px; padding: 10px; background: var(--bg-primary); border-radius: 6px;">
-                    <strong>Changeset #${changesetId}</strong><br>
-                    <span style="color: var(--text-secondary); font-size: 0.85rem;">by ${escapeHtml(changesetUser)}</span><br>
-                    <span style="font-size: 0.85rem; font-style: italic;">"${escapeHtml(changesetComment)}"</span>
-                </div>
-            `;
-            
-            // Clear previous content
-            document.getElementById('commentText').value = '';
-            document.getElementById('commentError').style.display = 'none';
-            document.getElementById('commentSuccess').style.display = 'none';
-            
-            // Show modal
-            document.getElementById('commentModal').style.display = 'flex';
-        })
-        .catch(error => {
-            console.error('Error checking login status:', error);
-            alert('Please login to comment on changesets');
-        });
-}
 
-function closeCommentModal() {
-    document.getElementById('commentModal').style.display = 'none';
-    currentCommentChangesetId = null;
-}
-
-async function submitComment() {
-    const commentText = document.getElementById('commentText').value.trim();
-    const errorDiv = document.getElementById('commentError');
-    const successDiv = document.getElementById('commentSuccess');
-    const submitBtn = document.getElementById('submitCommentBtn');
-    
-    // Hide previous messages
-    errorDiv.style.display = 'none';
-    successDiv.style.display = 'none';
-    
-    // Validate
-    if (!commentText) {
-        errorDiv.textContent = 'Please enter a comment';
-        errorDiv.style.display = 'block';
-        return;
-    }
-    
-    if (!currentCommentChangesetId) {
-        errorDiv.textContent = 'No changeset selected';
-        errorDiv.style.display = 'block';
-        return;
-    }
-    
-    // Disable button
-    submitBtn.disabled = true;
-    submitBtn.innerHTML = '<span>Posting...</span>';
-    
-    try {
-        const response = await fetch(`/api/changeset/${currentCommentChangesetId}/comment`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ comment: commentText })
-        });
-        
-        const data = await response.json();
-        
-        if (response.ok) {
-            successDiv.textContent = 'Comment posted successfully!';
-            successDiv.style.display = 'block';
-            document.getElementById('commentText').value = '';
-            
-            // Close modal after 2 seconds
-            setTimeout(() => {
-                closeCommentModal();
-            }, 2000);
-        } else {
-            errorDiv.textContent = data.error || 'Failed to post comment';
-            errorDiv.style.display = 'block';
-        }
-    } catch (error) {
-        console.error('Error posting comment:', error);
-        errorDiv.textContent = 'Network error. Please try again.';
-        errorDiv.style.display = 'block';
-    } finally {
-        // Re-enable button
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = `
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-            </svg>
-            Post Comment
-        `;
-    }
-}
-
-// Close modal when clicking outside
-document.addEventListener('click', function(event) {
-    const modal = document.getElementById('commentModal');
-    if (modal && event.target === modal) {
-        closeCommentModal();
-    }
-});
-
-// Close modal with Escape key
-document.addEventListener('keydown', function(event) {
-    if (event.key === 'Escape') {
-        const modal = document.getElementById('commentModal');
-        if (modal && modal.style.display === 'flex') {
-            closeCommentModal();
-        }
-    }
-});
 
 // Open OSM Editor at current map location
 function openOSMEditor() {
@@ -2705,10 +2569,12 @@ function initializeComparisonMaps() {
     afterLayers.deleted = L.layerGroup();
     
     // Initialize Before map
-    beforeMap = L.map('beforeMap').setView([1.3521, 103.8198], 15);
+    beforeMap = L.map('beforeMap', {
+        maxZoom: 22
+    }).setView([1.3521, 103.8198], 15);
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
         attribution: '&copy; OpenStreetMap contributors',
-        maxZoom: 19
+        maxZoom: 22
     }).addTo(beforeMap);
     
     // Add layer groups to before map
@@ -2717,10 +2583,12 @@ function initializeComparisonMaps() {
     beforeLayers.deleted.addTo(beforeMap);
     
     // Initialize After map
-    afterMap = L.map('afterMap').setView([1.3521, 103.8198], 15);
+    afterMap = L.map('afterMap', {
+        maxZoom: 22
+    }).setView([1.3521, 103.8198], 15);
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
         attribution: '&copy; OpenStreetMap contributors',
-        maxZoom: 19
+        maxZoom: 22
     }).addTo(afterMap);
     
     // Add layer groups to after map

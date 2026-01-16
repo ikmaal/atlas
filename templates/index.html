@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ATLAS</title>
-    <link rel="icon" type="image/png" href="{{ url_for('static', filename='atlas-icon.png') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
@@ -609,30 +609,6 @@
             window.toggleDashboardValidationVisibility = toggleDashboardValidationVisibility;
         </script>
 
-    <!-- Comment Modal -->
-    <div id="commentModal" class="modal" style="display: none;">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Add Comment to Changeset</h3>
-                <button class="modal-close" onclick="closeCommentModal()">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div id="commentChangesetInfo" class="comment-changeset-info"></div>
-                <textarea id="commentText" class="comment-textarea" placeholder="Write your comment here..." rows="5"></textarea>
-                <div id="commentError" class="comment-error" style="display: none;"></div>
-                <div id="commentSuccess" class="comment-success" style="display: none;"></div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeCommentModal()">Cancel</button>
-                <button class="btn btn-primary" onclick="submitComment()" id="submitCommentBtn">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                    </svg>
-                    Post Comment
-                </button>
-            </div>
-        </div>
-    </div>
 
     <!-- User Profile Modal -->
     <div id="profileModal" class="profile-modal" style="display: none;">

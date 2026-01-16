@@ -2385,49 +2385,6 @@ def get_user_changesets():
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/changeset/<changeset_id>/comment', methods=['POST'])
-def add_changeset_comment(changeset_id):
-    """Add a comment to a changeset"""
-    if 'user' not in session or 'access_token' not in session:
-        return jsonify({'error': 'Not logged in'}), 401
-    
-    try:
-        data = request.get_json()
-        comment_text = data.get('comment', '').strip()
-        
-        if not comment_text:
-            return jsonify({'error': 'Comment text is required'}), 400
-        
-        # Post comment to OSM API
-        access_token = session['access_token']
-        comment_url = f'https://api.openstreetmap.org/api/0.6/changeset/{changeset_id}/comment'
-        
-        headers = {
-            'Authorization': f'Bearer {access_token}',
-            'User-Agent': 'ATLAS-Singapore/1.0'
-        }
-        
-        comment_data = {'text': comment_text}
-        
-        response = requests.post(comment_url, data=comment_data, headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            print(f"✅ Comment added to changeset #{changeset_id}")
-            return jsonify({
-                'success': True,
-                'message': 'Comment posted successfully'
-            })
-        else:
-            print(f"❌ Failed to post comment: {response.status_code} - {response.text}")
-            return jsonify({
-                'error': f'Failed to post comment: {response.status_code}',
-                'details': response.text
-            }), response.status_code
-            
-    except Exception as e:
-        print(f"❌ Error posting comment: {e}")
-        return jsonify({'error': str(e)}), 500
-
 @app.route('/api/profile/<username>')
 def get_user_profile(username):
     """Get user profile information"""
@@ -2624,21 +2581,6 @@ def get_user_region_stats(username):
                     cs['tags']['mass_deletion'] = 'yes'
                     cs['tags']['deleted_count'] = str(total_deleted)
                     print(f"🏷️ Added mass_deletion tag to changeset {cs.get('id')} ({total_deleted} deletions)")
-        
-        # Only notify for NEW needs_review changesets (not already in alerted set)
-        # Skip notifications on initial load to avoid spamming existing changesets
-        if len(alerted_changesets) > 0:
-            new_count = 0
-            for cs in changesets:
-                cs_id = cs.get('id')
-                # Only send notifications for needs_review changesets
-                if cs_id and cs['validation'].get('status') == 'needs_review' and str(cs_id) not in alerted_changesets:
-                    # This is a NEW needs_review changeset - send notification
-                    send_slack_notification(cs)
-                    new_count += 1
-            
-            if new_count > 0:
-                print(f"📢 Sent notifications for {new_count} new needs_review changeset(s)")
         
         # Also log to Google Sheets if validation status is 'needs_review' and Google Sheets enabled
         for cs in changesets:
