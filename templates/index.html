@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
     <title>ATLAS</title>
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
@@ -802,6 +802,9 @@
                     <button class="comparison-tab" onclick="switchComparisonView('timeline')">
                         Change Timeline
                     </button>
+                    <button class="comparison-tab" onclick="switchComparisonView('analysis')">
+                        Analysis
+                    </button>
                 </div>
                 
                 <!-- Filter Controls -->
@@ -890,6 +893,36 @@
                 <div id="timelineView" class="comparison-view" style="display: none;">
                     <div class="comparison-timeline" id="changeTimeline">
                         <p style="text-align: center; color: #666; padding: 20px;">Loading timeline...</p>
+                    </div>
+                </div>
+                
+                <!-- Analysis View -->
+                <div id="analysisView" class="comparison-view" style="display: none;">
+                    <div class="comparison-analysis-container">
+                        <div id="comparisonAnalysisLoading" class="comparison-analysis-loading" style="display: flex;">
+                            <div class="atlas-message-loading">
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                            </div>
+                            <p style="margin-left: 12px; color: var(--text-secondary);">Atlas is analyzing the changeset...</p>
+                        </div>
+                        <div id="comparisonAnalysisContent" class="comparison-analysis-content" style="display: none;">
+                            <div class="atlas-message atlas-message-assistant">
+                                <div class="atlas-message-avatar">
+                                    <img src="{{ url_for('static', filename='atlas-icon.png') }}" alt="Atlas Logo" style="height: 40px; width: 40px; object-fit: cover; border-radius: 50%;">
+                                </div>
+                                <div class="atlas-message-content">
+                                    <div class="atlas-message-header">
+                                        <span class="atlas-message-name">Atlas</span>
+                                        <span class="atlas-message-time">Analysis</span>
+                                    </div>
+                                    <div class="atlas-message-text" id="comparisonAnalysisText">
+                                        <!-- Analysis will be inserted here -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

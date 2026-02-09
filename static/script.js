@@ -147,7 +147,19 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
     
     initMap();
-    loadData();
+    
+    // Check for changeset parameter in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const changesetParam = urlParams.get('changeset');
+    
+    if (changesetParam) {
+        // Load data and then filter to the specified changeset
+        loadData().then(() => {
+            filterToChangeset(changesetParam);
+        });
+    } else {
+        loadData();
+    }
 
     // Set up tab switching
     initTabs();
@@ -1339,6 +1351,91 @@ function updateMap(changesets) {
     updateLegend();
 }
 
+// Filter and zoom to a specific changeset by ID
+function filterToChangeset(changesetId) {
+    const csId = parseInt(changesetId);
+    if (isNaN(csId)) {
+        console.warn(`⚠️ Invalid changeset ID: ${changesetId}`);
+        return;
+    }
+    
+    // Find the changeset in the current changesets array
+    const targetChangeset = changesets.find(cs => cs.id === csId);
+    
+    if (!targetChangeset) {
+        console.warn(`⚠️ Changeset ${csId} not found in current data`);
+        // Try to find in stored needs_review changesets
+        const storedNeedsReview = getAllStoredNeedsReviewChangesets();
+        const storedChangeset = storedNeedsReview.find(cs => cs.id === csId);
+        
+        if (storedChangeset) {
+            console.log(`✅ Found changeset ${csId} in stored needs_review changesets`);
+            // Update map with just this changeset
+            updateMap([storedChangeset]);
+            
+            // Zoom to changeset bbox if available
+            if (storedChangeset.bbox && storedChangeset.bbox.min_lat && storedChangeset.bbox.max_lat && 
+                storedChangeset.bbox.min_lon && storedChangeset.bbox.max_lon) {
+                const bounds = [
+                    [storedChangeset.bbox.min_lat, storedChangeset.bbox.min_lon],
+                    [storedChangeset.bbox.max_lat, storedChangeset.bbox.max_lon]
+                ];
+                map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+                
+                // Open popup for the marker
+                setTimeout(() => {
+                    const marker = markers.find(m => {
+                        const lat = m.getLatLng().lat;
+                        const lon = m.getLatLng().lng;
+                        const centerLat = (storedChangeset.bbox.min_lat + storedChangeset.bbox.max_lat) / 2;
+                        const centerLon = (storedChangeset.bbox.min_lon + storedChangeset.bbox.max_lon) / 2;
+                        return Math.abs(lat - centerLat) < 0.001 && Math.abs(lon - centerLon) < 0.001;
+                    });
+                    if (marker) {
+                        marker.openPopup();
+                    }
+                }, 500);
+            }
+            return;
+        }
+        
+        console.warn(`⚠️ Changeset ${csId} not found in stored changesets either`);
+        return;
+    }
+    
+    console.log(`✅ Found changeset ${csId}, filtering and zooming...`);
+    
+    // Update map with just this changeset
+    updateMap([targetChangeset]);
+    
+    // Update changesets list to show only this changeset
+    updateChangesetsList([targetChangeset]);
+    
+    // Zoom to changeset bbox if available
+    if (targetChangeset.bbox && targetChangeset.bbox.min_lat && targetChangeset.bbox.max_lat && 
+        targetChangeset.bbox.min_lon && targetChangeset.bbox.max_lon) {
+        const bounds = [
+            [targetChangeset.bbox.min_lat, targetChangeset.bbox.min_lon],
+            [targetChangeset.bbox.max_lat, targetChangeset.bbox.max_lon]
+        ];
+        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+        
+        // Open popup for the marker
+        setTimeout(() => {
+            const marker = markers.find(m => {
+                const lat = m.getLatLng().lat;
+                const lon = m.getLatLng().lng;
+                const centerLat = (targetChangeset.bbox.min_lat + targetChangeset.bbox.max_lat) / 2;
+                const centerLon = (targetChangeset.bbox.min_lon + targetChangeset.bbox.max_lon) / 2;
+                return Math.abs(lat - centerLat) < 0.001 && Math.abs(lon - centerLon) < 0.001;
+            });
+            if (marker) {
+                marker.openPopup();
+            }
+        }, 500);
+    }
+}
+
 // Get color based on number of changes
 function getColorForChanges(numChanges) {
     if (numChanges < 10) return '#10b981';  // Green - small changes
@@ -2165,7 +2262,24 @@ async function visualizeChangesetOnMyEditsMap(changesetId) {
     }
 }
 
-// Parse changeset XML and visualize on map
+// Helper function to check if an element is a routing element (road)
+function isRoutingElementJS(elem) {
+    // Only ways (roads) affect routing
+    if (elem.tagName !== 'way') {
+        return false;
+    }
+    
+    // Check for highway tag
+    const tags = elem.querySelectorAll('tag');
+    for (const tag of tags) {
+        if (tag.getAttribute('k') === 'highway') {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Parse changeset XML and visualize on map - FILTER: Only show routing elements (roads)
 function parseAndVisualizeChangeset(xmlDoc, layerGroup, mapInstance) {
     const stats = {
         created: { nodes: 0, ways: 0 },
@@ -2175,7 +2289,7 @@ function parseAndVisualizeChangeset(xmlDoc, layerGroup, mapInstance) {
         center: null
     };
     
-    // Store all nodes by ID for way rendering
+    // Store all nodes by ID for way rendering (only for routing elements)
     const allNodes = {};
     
     // Colors for different actions
@@ -2187,24 +2301,29 @@ function parseAndVisualizeChangeset(xmlDoc, layerGroup, mapInstance) {
     
     const bounds = L.latLngBounds();
     
-    // First pass: collect all nodes
+    // First pass: collect nodes from routing elements (roads) only
     ['create', 'modify', 'delete'].forEach(action => {
         const actionElement = xmlDoc.querySelector(action);
         if (actionElement) {
-            const nodes = actionElement.querySelectorAll('node');
-            nodes.forEach(node => {
-                const id = node.getAttribute('id');
-                const lat = parseFloat(node.getAttribute('lat'));
-                const lon = parseFloat(node.getAttribute('lon'));
-                
-                if (lat && lon) {
-                    allNodes[id] = { lat, lon, action };
+            // Only collect nodes from ways that are routing elements
+            const ways = actionElement.querySelectorAll('way');
+            ways.forEach(way => {
+                if (isRoutingElementJS(way)) {
+                    const wayNodes = way.querySelectorAll('nd');
+                    wayNodes.forEach(nd => {
+                        const ref = nd.getAttribute('ref');
+                        // We'll need to fetch node coordinates separately if not in changeset
+                        // For now, we'll collect them in the second pass
+                    });
                 }
             });
+            
+            // Also collect standalone nodes (though they don't affect routing directly)
+            // But we'll skip them since we only care about roads
         }
     });
     
-    // Second pass: render nodes and ways
+    // Second pass: render routing elements (roads) only
     ['create', 'modify', 'delete'].forEach(action => {
         const actionElement = xmlDoc.querySelector(action);
         if (!actionElement) return;
@@ -2212,46 +2331,32 @@ function parseAndVisualizeChangeset(xmlDoc, layerGroup, mapInstance) {
         const color = colors[action];
         const actionKey = action === 'create' ? 'created' : action === 'modify' ? 'modified' : 'deleted';
         
-        // Render nodes as circle markers
-        const nodes = actionElement.querySelectorAll('node');
-        nodes.forEach(node => {
-            const lat = parseFloat(node.getAttribute('lat'));
-            const lon = parseFloat(node.getAttribute('lon'));
-            
-            if (lat && lon) {
-                const latlng = L.latLng(lat, lon);
-                bounds.extend(latlng);
-                
-                // Create circle marker for node
-                L.circleMarker(latlng, {
-                    radius: 5,
-                    fillColor: color,
-                    color: '#fff',
-                    weight: 2,
-                    opacity: 1,
-                    fillOpacity: 0.8
-                }).bindPopup(`
-                    <div style="font-size: 0.85rem;">
-                        <strong>${action.toUpperCase()} Node</strong><br/>
-                        ID: ${node.getAttribute('id')}<br/>
-                        Lat: ${lat.toFixed(6)}<br/>
-                        Lon: ${lon.toFixed(6)}
-                    </div>
-                `).addTo(layerGroup);
-                
-                stats[actionKey].nodes++;
-            }
-        });
-        
-        // Render ways as polylines
+        // Render ways as polylines - FILTER: Only routing elements (roads)
         const ways = actionElement.querySelectorAll('way');
         ways.forEach(way => {
+            // Only process routing elements (roads)
+            if (!isRoutingElementJS(way)) {
+                return;
+            }
+            
             const wayNodes = way.querySelectorAll('nd');
             const coordinates = [];
             
+            // Try to get coordinates from nodes in the changeset
             wayNodes.forEach(nd => {
                 const ref = nd.getAttribute('ref');
-                if (allNodes[ref]) {
+                // Look for the node in the changeset
+                const nodeInChangeset = xmlDoc.querySelector(`node[id="${ref}"]`);
+                if (nodeInChangeset) {
+                    const lat = parseFloat(nodeInChangeset.getAttribute('lat'));
+                    const lon = parseFloat(nodeInChangeset.getAttribute('lon'));
+                    if (lat && lon) {
+                        coordinates.push([lat, lon]);
+                        bounds.extend([lat, lon]);
+                        allNodes[ref] = { lat, lon, action };
+                    }
+                } else if (allNodes[ref]) {
+                    // Use previously collected node
                     const nodeData = allNodes[ref];
                     coordinates.push([nodeData.lat, nodeData.lon]);
                     bounds.extend([nodeData.lat, nodeData.lon]);
@@ -2259,6 +2364,16 @@ function parseAndVisualizeChangeset(xmlDoc, layerGroup, mapInstance) {
             });
             
             if (coordinates.length >= 2) {
+                // Get highway tag for popup
+                const tags = way.querySelectorAll('tag');
+                let highwayType = 'road';
+                for (const tag of tags) {
+                    if (tag.getAttribute('k') === 'highway') {
+                        highwayType = tag.getAttribute('v');
+                        break;
+                    }
+                }
+                
                 L.polyline(coordinates, {
                     color: color,
                     weight: 4,
@@ -2266,8 +2381,9 @@ function parseAndVisualizeChangeset(xmlDoc, layerGroup, mapInstance) {
                     smoothFactor: 1
                 }).bindPopup(`
                     <div style="font-size: 0.85rem;">
-                        <strong>${action.toUpperCase()} Way</strong><br/>
+                        <strong>${action.toUpperCase()} Road</strong><br/>
                         ID: ${way.getAttribute('id')}<br/>
+                        Type: ${highwayType}<br/>
                         Nodes: ${coordinates.length}
                     </div>
                 `).addTo(layerGroup);
@@ -2485,7 +2601,7 @@ let afterLayers = {
 function updateComparisonProgress(progress, text, details = '') {
     document.getElementById('progressBarFill').style.width = progress + '%';
     document.getElementById('loadingText').textContent = text;
-    document.getElementById('loadingDetails').textContent = details;
+    document.getElementById('loadingDetails').textContent = details || 'Initializing...';
 }
 
 // Open comparison modal
@@ -2500,22 +2616,54 @@ async function showChangesetComparison(changesetId) {
         document.getElementById('sideByMapsView').style.display = 'none';
         document.getElementById('diffView').style.display = 'none';
         document.getElementById('timelineView').style.display = 'none';
+        document.getElementById('analysisView').style.display = 'none';
+        // Reset analysis content
+        document.getElementById('comparisonAnalysisText').textContent = '';
+        document.getElementById('comparisonAnalysisLoading').style.display = 'flex';
+        document.getElementById('comparisonAnalysisContent').style.display = 'none';
         
         // Start progress
         updateComparisonProgress(10, 'Loading changeset...', 'Fetching changeset data from OpenStreetMap API');
         
         // Fetch comparison data with progress updates
-        const response = await fetch(`/api/changeset/${changesetId}/comparison`);
+        // Use longer timeout for large changesets
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 180000); // 3 minutes timeout
+        
+        let response;
+        try {
+            response = await fetch(`/api/changeset/${changesetId}/comparison`, {
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+        } catch (error) {
+            clearTimeout(timeoutId);
+            if (error.name === 'AbortError') {
+                throw new Error('Request timeout - changeset is too large. Processing may take longer than expected.');
+            }
+            throw error;
+        }
+        
         updateComparisonProgress(30, 'Processing data...', 'Parsing changeset XML');
         
         const data = await response.json();
-        updateComparisonProgress(60, 'Analyzing changes...', 'Calculating element geometries');
         
         if (!data.success) {
-            throw new Error('Failed to fetch comparison data');
+            if (data.error_type === 'timeout') {
+                throw new Error('Request timeout - changeset is too large. Try again or contact support.');
+            }
+            throw new Error(data.error || 'Failed to fetch comparison data');
         }
         
+        updateComparisonProgress(60, 'Analyzing changes...', 'Calculating element geometries');
+        
         comparisonData = data.comparison;
+        
+        // Show warning for large changesets with partial data
+        if (comparisonData.metadata && comparisonData.metadata.is_large_changeset) {
+            showLargeChangesetWarning(comparisonData.metadata);
+        }
+        
         updateComparisonProgress(80, 'Preparing visualization...', 'Setting up maps and views');
         
         // Update stats
@@ -2543,9 +2691,73 @@ async function showChangesetComparison(changesetId) {
         
     } catch (error) {
         console.error('Error loading comparison:', error);
-        alert('Failed to load changeset comparison: ' + error.message);
+        
+        // Show user-friendly error message
+        let errorMessage = 'Failed to load changeset comparison: ' + error.message;
+        if (error.message.includes('timeout') || error.message.includes('Timeout')) {
+            errorMessage = '⏱️ This changeset is very large and processing timed out. ' +
+                          'The comparison tool is working on improving support for large changesets. ' +
+                          'Please try again in a moment or contact support if the issue persists.';
+        }
+        
+        alert(errorMessage);
         closeComparisonModal();
     }
+}
+
+// Show warning banner for large changesets
+function showLargeChangesetWarning(metadata) {
+    // Remove any existing warnings
+    const existingWarning = document.querySelector('.large-changeset-warning');
+    if (existingWarning) {
+        existingWarning.remove();
+    }
+    
+    const warning = document.createElement('div');
+    warning.className = 'large-changeset-warning';
+    warning.style.cssText = `
+        background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+        border-left: 4px solid #f59e0b;
+        padding: 12px 16px;
+        margin: 16px;
+        border-radius: 6px;
+        color: #92400e;
+        font-size: 14px;
+    `;
+    
+    let warningText = '<strong>⚠️ Large Changeset Detected</strong><br>';
+    
+    if (metadata.total_modified > 500) {
+        warningText += `<p style="margin: 8px 0 0 0;">Showing old version data for ${metadata.modified_with_old_data} of ${metadata.total_modified} modified elements ` +
+                      `(processing limited to first 500 for performance).</p>`;
+    }
+    
+    if (metadata.total_deleted > 200) {
+        warningText += `<p style="margin: 8px 0 0 0;">Processing ${metadata.deleted_with_geometry} of ${metadata.total_deleted} deleted elements with geometry data.</p>`;
+    }
+    
+    warning.innerHTML = warningText;
+    
+    // Insert after tabs, before filters
+    const tabs = document.querySelector('.comparison-tabs');
+    if (tabs && tabs.parentNode) {
+        tabs.parentNode.insertBefore(warning, tabs.nextSibling);
+    } else {
+        // Fallback: insert at top of modal body
+        const modalBody = document.querySelector('.comparison-modal-body');
+        if (modalBody) {
+            modalBody.insertBefore(warning, modalBody.firstChild);
+        }
+    }
+    
+    // Auto-hide after 10 seconds
+    setTimeout(() => {
+        if (warning.parentNode) {
+            warning.style.transition = 'opacity 0.5s';
+            warning.style.opacity = '0';
+            setTimeout(() => warning.remove(), 500);
+        }
+    }, 10000);
 }
 
 function initializeComparisonMaps() {
@@ -2590,6 +2802,11 @@ function initializeComparisonMaps() {
         attribution: '&copy; OpenStreetMap contributors',
         maxZoom: 22
     }).addTo(afterMap);
+    
+    // Add layer groups to after map
+    afterLayers.created.addTo(afterMap);
+    afterLayers.modified.addTo(afterMap);
+    afterLayers.deleted.addTo(afterMap);
     
     // Add layer groups to after map
     afterLayers.created.addTo(afterMap);
@@ -2942,6 +3159,12 @@ function switchComparisonView(view) {
         document.getElementById('diffView').style.display = 'block';
     } else if (view === 'timeline') {
         document.getElementById('timelineView').style.display = 'block';
+    } else if (view === 'analysis') {
+        document.getElementById('analysisView').style.display = 'block';
+        // Load analysis if not already loaded
+        if (comparisonData && !document.getElementById('comparisonAnalysisText').textContent.trim()) {
+            loadComparisonAnalysis();
+        }
     }
 }
 
@@ -2988,6 +3211,64 @@ function closeComparisonModal() {
     if (afterMap) {
         afterMap.remove();
         afterMap = null;
+    }
+}
+
+// Load comparison analysis from Atlas AI
+async function loadComparisonAnalysis() {
+    if (!comparisonData) {
+        console.error('No comparison data available');
+        return;
+    }
+    
+    const changesetId = document.getElementById('comparisonChangesetId').textContent.replace('#', '');
+    const loadingEl = document.getElementById('comparisonAnalysisLoading');
+    const contentEl = document.getElementById('comparisonAnalysisContent');
+    const textEl = document.getElementById('comparisonAnalysisText');
+    
+    try {
+        loadingEl.style.display = 'flex';
+        contentEl.style.display = 'none';
+        
+        // Fetch analysis from backend
+        const response = await fetch(`/api/changeset/${changesetId}/analysis`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                comparison_data: comparisonData
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to fetch analysis');
+        }
+        
+        const data = await response.json();
+        
+        // Hide loading, show content
+        loadingEl.style.display = 'none';
+        contentEl.style.display = 'block';
+        
+        // Parse markdown and display
+        if (typeof marked !== 'undefined') {
+            marked.setOptions({
+                breaks: true,
+                gfm: true,
+                sanitize: false
+            });
+            textEl.innerHTML = marked.parse(data.analysis);
+        } else {
+            // Fallback to plain text if marked is not available
+            textEl.textContent = data.analysis;
+        }
+        
+    } catch (error) {
+        console.error('Error loading analysis:', error);
+        loadingEl.style.display = 'none';
+        contentEl.style.display = 'block';
+        textEl.innerHTML = '<p style="color: #dc2626;">Failed to load analysis. Please try again.</p>';
     }
 }
 

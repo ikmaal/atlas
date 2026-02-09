@@ -674,6 +674,23 @@ function initializeMapComparison(messageElement) {
     }, 100);
 }
 
+// Helper function to check if an element is a routing element (road)
+function isRoutingElement(elem) {
+    // Only ways (roads) affect routing
+    if (elem.tagName !== 'way') {
+        return false;
+    }
+    
+    // Check for highway tag
+    const tags = elem.querySelectorAll('tag');
+    for (const tag of tags) {
+        if (tag.getAttribute('k') === 'highway') {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Fetch changeset elements and display on maps
 async function fetchChangesetElements(changesetId, beforeMap, afterMap) {
     try {
@@ -684,24 +701,30 @@ async function fetchChangesetElements(changesetId, beforeMap, afterMap) {
         const parser = new DOMParser();
         const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
         
-        // Process created elements (show on after map)
+        // Process created elements - FILTER: Only show routing elements (roads)
         const createElements = xmlDoc.querySelectorAll('create > *');
         createElements.forEach(elem => {
-            addElementToMap(elem, afterMap, '#22c55e', 'Created');
+            if (isRoutingElement(elem)) {
+                addElementToMap(elem, afterMap, '#22c55e', 'Created');
+            }
         });
         
-        // Process modified elements (show on both maps)
+        // Process modified elements - FILTER: Only show routing elements (roads)
         const modifyElements = xmlDoc.querySelectorAll('modify > *');
         modifyElements.forEach(elem => {
-            addElementToMap(elem, afterMap, '#f97316', 'Modified');
-            // For "before" state, we'd need to fetch previous version (complex)
-            // For now, just show on after map
+            if (isRoutingElement(elem)) {
+                addElementToMap(elem, afterMap, '#f97316', 'Modified');
+                // For "before" state, we'd need to fetch previous version (complex)
+                // For now, just show on after map
+            }
         });
         
-        // Process deleted elements (show on before map)
+        // Process deleted elements - FILTER: Only show routing elements (roads)
         const deleteElements = xmlDoc.querySelectorAll('delete > *');
         deleteElements.forEach(elem => {
-            addElementToMap(elem, beforeMap, '#ef4444', 'Deleted');
+            if (isRoutingElement(elem)) {
+                addElementToMap(elem, beforeMap, '#ef4444', 'Deleted');
+            }
         });
         
     } catch (error) {

@@ -20,7 +20,7 @@ $env:SECRET_KEY="YOUR_SECRET_KEY_HERE"
 
 # Groq API Key for Atlas AI (get free key from https://console.groq.com)
 $env:GROQ_API_KEY="YOUR_GROQ_API_KEY_HERE"
-$env:SLACK_WEBHOOK_URL="https://hooks.slack.com/triggers/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"
+$env:SLACK_WEBHOOK_URL=""
 $env:SLACK_ALERTS_ENABLED="false"
 
 Write-Host "================================================" -ForegroundColor Cyan

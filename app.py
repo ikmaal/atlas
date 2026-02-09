@@ -14,6 +14,7 @@ import sys
 import json
 import base64
 import uuid
+import time
 
 # Fix Windows console encoding for emojis
 if sys.platform == 'win32':
@@ -239,6 +240,8 @@ SLACK_WEBHOOK_URL = os.environ.get('SLACK_WEBHOOK_URL', '')
 SLACK_ALERTS_ENABLED = os.environ.get('SLACK_ALERTS_ENABLED', 'false').lower() == 'true'
 # Detect if using Slack Workflow (workflow URLs contain '/triggers/')
 SLACK_IS_WORKFLOW = '/triggers/' in SLACK_WEBHOOK_URL if SLACK_WEBHOOK_URL else False
+# Atlas base URL for comparison links
+ATLAS_BASE_URL = os.environ.get('ATLAS_BASE_URL', 'https://atlas.maptiler.com')
 
 # Track alerted changesets to avoid duplicate notifications
 ALERTED_CHANGESETS_FILE = '.alerted_changesets.json'
@@ -324,6 +327,7 @@ def send_slack_notification(changeset):
         # Build OSM links
         osm_link = f"https://www.openstreetmap.org/changeset/{cs_id}"
         osmcha_link = f"https://osmcha.org/changesets/{cs_id}"
+        atlas_comparison_link = f"{ATLAS_BASE_URL}/?changeset={cs_id}"
         
         # Determine header text based on changeset type
         if is_mass_deletion:
@@ -461,6 +465,15 @@ def send_slack_notification(changeset):
                             "emoji": True
                         },
                         "url": osmcha_link
+                    },
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "🌍 Open in Atlas",
+                            "emoji": True
+                        },
+                        "url": atlas_comparison_link
                     }
                 ]
             })
@@ -939,6 +952,34 @@ def validate_changeset(changeset):
     
     return validation
 
+def is_routing_element(elem_or_dict):
+    """
+    Check if an OSM element affects routing (is a road).
+    Roads are ways with a highway tag.
+    
+    Args:
+        elem_or_dict: Either an XML ElementTree element or a parsed element dict
+    
+    Returns:
+        bool: True if the element is a road (way with highway tag)
+    """
+    # Handle XML element
+    if hasattr(elem_or_dict, 'tag'):  # XML element
+        if elem_or_dict.tag != 'way':
+            return False
+        # Check for highway tag
+        for tag in elem_or_dict.findall('tag'):
+            if tag.get('k') == 'highway':
+                return True
+        return False
+    # Handle parsed dict
+    elif isinstance(elem_or_dict, dict):
+        if elem_or_dict.get('type') != 'way':
+            return False
+        tags = elem_or_dict.get('tags', {})
+        return 'highway' in tags
+    return False
+
 def fetch_changeset_details(changeset_id):
     """
     Fetch detailed statistics for a specific changeset
@@ -966,6 +1007,7 @@ def fetch_changeset_details(changeset_id):
         
         # Note: OSM API can return multiple <create>/<modify>/<delete> tags
         # We need to use findall() to get ALL of them, not just find() which gets the first one
+        # FILTER: Only count elements that affect routing (roads - ways with highway tag)
         for action in ['create', 'modify', 'delete']:
             action_key = 'created' if action == 'create' else 'modified' if action == 'modify' else 'deleted'
             
@@ -973,10 +1015,12 @@ def fetch_changeset_details(changeset_id):
             action_elems = root.findall(action)
             
             for action_elem in action_elems:
-                for elem_type in ['node', 'way', 'relation']:
-                    # Count elements in this action block
-                    count = len(action_elem.findall(elem_type))
-                    stats[action_key][elem_type] += count
+                # Only process ways (roads) - nodes and relations don't affect routing directly
+                ways = action_elem.findall('way')
+                for way in ways:
+                    # Only count if it's a routing element (has highway tag)
+                    if is_routing_element(way):
+                        stats[action_key]['way'] += 1
         
         # Calculate totals
         stats['total_created'] = sum(stats['created'].values())
@@ -1421,7 +1465,7 @@ def get_changeset_comparison(changeset_id):
         # Fetch changeset details from OSM API
         url = f"https://api.openstreetmap.org/api/0.6/changeset/{changeset_id}/download"
         headers = {'User-Agent': 'ATLAS-Singapore/1.0'}
-        response = requests.get(url, headers=headers, timeout=60)
+        response = requests.get(url, headers=headers, timeout=120)  # Increased initial timeout
         response.raise_for_status()
         
         root = ET.fromstring(response.content)
@@ -1444,9 +1488,13 @@ def get_changeset_comparison(changeset_id):
             'deleted': []
         }
         
-        # Parse created elements
+        # Parse created elements - FILTER: Only process routing elements (roads)
         for create_elem in root.findall('create'):
             for elem in create_elem:
+                # Only process roads (ways with highway tag)
+                if not is_routing_element(elem):
+                    continue
+                    
                 created_item = parse_osm_element(elem, 'created')
                 
                 # For ways without coordinates, calculate center and geometry from nodes in changeset
@@ -1467,10 +1515,14 @@ def get_changeset_comparison(changeset_id):
                 
                 comparison_data['created'].append(created_item)
         
-        # Parse modified elements
+        # Parse modified elements - FILTER: Only process routing elements (roads)
         modified_items = []
         for modify_elem in root.findall('modify'):
             for elem in modify_elem:
+                # Only process roads (ways with highway tag)
+                if not is_routing_element(elem):
+                    continue
+                    
                 modified_item = parse_osm_element(elem, 'modified')
                 
                 # For ways without coordinates, calculate center and geometry from nodes in changeset
@@ -1491,32 +1543,44 @@ def get_changeset_comparison(changeset_id):
                 
                 modified_items.append(modified_item)
         
-        # Fetch previous versions for modified elements to get old tags
-        # Limit to first 100 elements to avoid timeouts on large changesets
-        MAX_PREVIOUS_VERSIONS = 100
-        items_to_fetch = modified_items[:MAX_PREVIOUS_VERSIONS]
+        # IMPROVED: Process modified elements in chunks with dynamic timeout
+        total_modified = len(modified_items)
+        CHUNK_SIZE = 50  # Process 50 at a time
+        MAX_ELEMENTS_TO_FETCH = 500  # Increased from 100
         
-        if len(modified_items) > MAX_PREVIOUS_VERSIONS:
-            print(f"📍 Large changeset detected: {len(modified_items)} modified elements")
-            print(f"📍 Fetching old versions for first {MAX_PREVIOUS_VERSIONS} elements only...")
+        if total_modified > MAX_ELEMENTS_TO_FETCH:
+            print(f"📍 Large changeset detected: {total_modified} modified elements")
+            print(f"📍 Fetching old versions for first {MAX_ELEMENTS_TO_FETCH} elements...")
+            items_to_fetch = modified_items[:MAX_ELEMENTS_TO_FETCH]
         else:
-            print(f"📍 Fetching old versions for {len(modified_items)} modified elements...")
+            print(f"📍 Fetching old versions for {total_modified} modified elements...")
+            items_to_fetch = modified_items
         
+        # Process in chunks to avoid overwhelming the API
         if len(items_to_fetch) > 0:
-            with ThreadPoolExecutor(max_workers=15) as executor:
-                future_to_item = {}
-                for item in items_to_fetch:
-                    future = executor.submit(fetch_previous_element_version, item['type'], item['id'], item['version'])
-                    future_to_item[future] = item
+            chunks = [items_to_fetch[i:i + CHUNK_SIZE] for i in range(0, len(items_to_fetch), CHUNK_SIZE)]
+            total_chunks = len(chunks)
+            total_errors = 0
+            
+            for chunk_idx, chunk in enumerate(chunks):
+                print(f"  📦 Processing chunk {chunk_idx + 1}/{total_chunks} ({len(chunk)} elements)...")
                 
-                if len(future_to_item) > 0:
+                with ThreadPoolExecutor(max_workers=10) as executor:  # Reduced workers to avoid rate limits
+                    future_to_item = {}
+                    for item in chunk:
+                        future = executor.submit(fetch_previous_element_version, item['type'], item['id'], item['version'])
+                        future_to_item[future] = item
+                    
                     completed = 0
+                    errors = 0
+                    chunk_timeout = min(90, 30 + len(chunk) * 2)  # Dynamic timeout based on chunk size
+                    
                     try:
-                        for future in as_completed(future_to_item, timeout=60):
+                        for future in as_completed(future_to_item, timeout=chunk_timeout):
                             item = future_to_item[future]
                             completed += 1
                             try:
-                                old_data = future.result()
+                                old_data = future.result(timeout=10)
                                 if old_data:
                                     # Merge old data into item
                                     item['old_tags'] = old_data['old_tags']
@@ -1534,67 +1598,114 @@ def get_changeset_comparison(changeset_id):
                                         if len(old_geometry_coords) > 1:
                                             item['old_geometry'] = old_geometry_coords
                                     
-                                    if completed % 20 == 0 or completed == len(future_to_item):
-                                        print(f"  ✓ [{completed}/{len(future_to_item)}] Fetched old versions...")
+                                    if completed % 10 == 0 or completed == len(future_to_item):
+                                        print(f"    ✓ [{completed}/{len(future_to_item)}] Fetched old versions...")
                                 else:
-                                    if completed % 20 == 0:
-                                        print(f"  ⚠️  [{completed}/{len(future_to_item)}] Some elements missing old versions...")
+                                    errors += 1
                             except Exception as e:
-                                if completed % 20 == 0:
-                                    print(f"  ⚠️  [{completed}/{len(future_to_item)}] Some errors encountered...")
+                                errors += 1
+                                total_errors += 1
+                                if errors <= 5:  # Only log first few errors per chunk
+                                    print(f"    ⚠️  Error fetching {item['type']} #{item['id']}: {str(e)[:50]}")
                     except TimeoutError:
-                        print(f"  ⚠️  Timeout after {completed}/{len(future_to_item)} completed - continuing with partial results")
+                        print(f"    ⚠️  Chunk timeout after {completed}/{len(future_to_item)} completed")
+                        total_errors += (len(future_to_item) - completed)
+                    
+                    print(f"    📊 Chunk {chunk_idx + 1}: {completed - errors} successful, {errors} failed")
+                    
+                    # Small delay between chunks to avoid rate limiting
+                    if chunk_idx < total_chunks - 1:
+                        time.sleep(0.5)
+            
+            if total_errors > 0:
+                print(f"  ⚠️  Total errors across all chunks: {total_errors}")
         
         comparison_data['modified'] = modified_items
         
-        # Parse deleted elements - must fetch from API since changeset strips coordinates
+        # Parse deleted elements - FILTER: Only process routing elements (roads)
+        # Must fetch from API since changeset strips coordinates
         deleted_items = []
         for delete_elem in root.findall('delete'):
             for elem in delete_elem:
+                # Only process roads (ways with highway tag)
+                if not is_routing_element(elem):
+                    continue
+                    
                 deleted_item = parse_osm_element(elem, 'deleted')
                 deleted_items.append(deleted_item)
         
-        print(f"📍 Processing {len(deleted_items)} deleted elements with parallel fetching...")
+        print(f"📍 Processing {len(deleted_items)} deleted elements...")
         
-        # Fetch geometry in parallel for better performance
+        # IMPROVED: Process deleted elements in chunks
         if len(deleted_items) > 0:
-            with ThreadPoolExecutor(max_workers=10) as executor:
-                future_to_item = {}
-                for item in deleted_items:
-                    if not item['lat']:
-                        future = executor.submit(fetch_element_geometry, item['type'], item['id'], item['version'])
-                        future_to_item[future] = item
+            CHUNK_SIZE_DELETED = 30  # Smaller chunks for deleted (more complex)
+            items_needing_geometry = [item for item in deleted_items if not item['lat']]
+            
+            if len(items_needing_geometry) > 0:
+                chunks = [items_needing_geometry[i:i + CHUNK_SIZE_DELETED] for i in range(0, len(items_needing_geometry), CHUNK_SIZE_DELETED)]
+                total_chunks = len(chunks)
+                total_deleted_errors = 0
                 
-                if len(future_to_item) > 0:
-                    completed = 0
-                    errors = 0
-                    try:
-                        # Increased timeout from 30 to 60 seconds for better reliability with ways
-                        for future in as_completed(future_to_item, timeout=60):
-                            item = future_to_item[future]
-                            completed += 1
-                            try:
-                                geometry = future.result(timeout=15)  # Individual timeout per element
-                                if geometry:
-                                    item['lat'] = geometry['lat']
-                                    item['lon'] = geometry['lon']
-                                    item['geometry'] = geometry.get('geometry')  # Add full geometry array
-                                    geo_type = "line" if geometry.get('geometry') else "point"
-                                    if completed % 5 == 0 or item['type'] == 'way':  # Always log ways
-                                        print(f"  ✓ [{completed}/{len(future_to_item)}] {item['type']} #{item['id']}: {geometry['lat']:.4f}, {geometry['lon']:.4f} ({geo_type})")
-                                else:
-                                    errors += 1
-                                    print(f"  ✗ [{completed}/{len(future_to_item)}] {item['type']} #{item['id']}: no geometry returned")
-                            except Exception as e:
-                                errors += 1
-                                print(f"  ✗ [{completed}/{len(future_to_item)}] {item['type']} #{item['id']}: {str(e)}")
-                    except TimeoutError:
-                        print(f"  ⚠️  Timeout after {completed}/{len(future_to_item)} completed - continuing with partial results")
+                for chunk_idx, chunk in enumerate(chunks):
+                    print(f"  📦 Processing deleted chunk {chunk_idx + 1}/{total_chunks} ({len(chunk)} elements)...")
                     
-                    print(f"  📊 Deleted elements: {completed - errors} successful, {errors} failed")
+                    with ThreadPoolExecutor(max_workers=8) as executor:
+                        future_to_item = {}
+                        for item in chunk:
+                            future = executor.submit(fetch_element_geometry, item['type'], item['id'], item['version'])
+                            future_to_item[future] = item
+                        
+                        completed = 0
+                        errors = 0
+                        chunk_timeout = min(120, 40 + len(chunk) * 3)  # Longer timeout for deleted elements
+                        
+                        try:
+                            for future in as_completed(future_to_item, timeout=chunk_timeout):
+                                item = future_to_item[future]
+                                completed += 1
+                                try:
+                                    geometry = future.result(timeout=20)
+                                    if geometry:
+                                        item['lat'] = geometry['lat']
+                                        item['lon'] = geometry['lon']
+                                        item['geometry'] = geometry.get('geometry')
+                                        geo_type = "line" if geometry.get('geometry') else "point"
+                                        if completed % 10 == 0 or (item['type'] == 'way' and completed <= 5):
+                                            print(f"    ✓ [{completed}/{len(future_to_item)}] {item['type']} #{item['id']}: {geometry['lat']:.4f}, {geometry['lon']:.4f} ({geo_type})")
+                                    else:
+                                        errors += 1
+                                except Exception as e:
+                                    errors += 1
+                                    total_deleted_errors += 1
+                                    if errors <= 5:
+                                        print(f"    ✗ [{completed}/{len(future_to_item)}] {item['type']} #{item['id']}: {str(e)[:50]}")
+                        except TimeoutError:
+                            print(f"    ⚠️  Chunk timeout after {completed}/{len(future_to_item)} completed")
+                            total_deleted_errors += (len(future_to_item) - completed)
+                        
+                        print(f"    📊 Deleted chunk {chunk_idx + 1}: {completed - errors} successful, {errors} failed")
+                        
+                        # Delay between chunks
+                        if chunk_idx < total_chunks - 1:
+                            time.sleep(0.5)
+                
+                if total_deleted_errors > 0:
+                    print(f"  ⚠️  Total deleted element errors: {total_deleted_errors}")
         
         comparison_data['deleted'] = deleted_items
+        
+        # Add metadata about processing
+        comparison_data['metadata'] = {
+            'total_modified': total_modified,
+            'modified_with_old_data': sum(1 for m in modified_items if 'old_tags' in m),
+            'total_deleted': len(deleted_items),
+            'deleted_with_geometry': sum(1 for d in deleted_items if d.get('lat')),
+            'is_large_changeset': total_modified > MAX_ELEMENTS_TO_FETCH or len(deleted_items) > 200
+        }
+        
         print(f"✅ Comparison complete: {len(comparison_data['created'])} created, {len(comparison_data['modified'])} modified, {len(comparison_data['deleted'])} deleted")
+        if comparison_data['metadata']['is_large_changeset']:
+            print(f"   📊 Large changeset: {comparison_data['metadata']['modified_with_old_data']}/{comparison_data['metadata']['total_modified']} modified with old data, {comparison_data['metadata']['deleted_with_geometry']}/{comparison_data['metadata']['total_deleted']} deleted with geometry")
         
         return jsonify({
             'success': True,
@@ -1602,9 +1713,245 @@ def get_changeset_comparison(changeset_id):
             'comparison': comparison_data
         })
         
+    except requests.exceptions.Timeout:
+        print(f"⏱️  Timeout fetching changeset #{changeset_id}")
+        return jsonify({
+            'success': False,
+            'error': 'Request timeout - changeset is too large. Try again or contact support.',
+            'error_type': 'timeout'
+        }), 504
     except Exception as e:
         print(f"Error fetching comparison: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'error_type': 'server_error'
+        }), 500
+
+@app.route('/api/changeset/<changeset_id>/analysis', methods=['POST'])
+def analyze_changeset_comparison(changeset_id):
+    """
+    Analyze comparison data and generate detailed AI summary
+    """
+    try:
+        data = request.get_json()
+        comparison_data = data.get('comparison_data', {})
+        
+        if not comparison_data:
+            return jsonify({'error': 'No comparison data provided'}), 400
+        
+        # Generate detailed analysis
+        analysis = generate_comparison_analysis(changeset_id, comparison_data)
+        
+        return jsonify({
+            'success': True,
+            'analysis': analysis
+        })
+        
+    except Exception as e:
+        print(f"Error analyzing comparison: {e}")
         return jsonify({'error': str(e)}), 500
+
+def generate_comparison_analysis(changeset_id, comparison_data):
+    """
+    Generate detailed AI analysis of changeset comparison data
+    """
+    created = comparison_data.get('created', [])
+    modified = comparison_data.get('modified', [])
+    deleted = comparison_data.get('deleted', [])
+    
+    # Analyze tag changes
+    tag_changes = {}
+    element_types = {'node': 0, 'way': 0, 'relation': 0}
+    common_tags = {}
+    
+    # Analyze created elements
+    for elem in created:
+        elem_type = elem.get('type', 'unknown')
+        element_types[elem_type] = element_types.get(elem_type, 0) + 1
+        tags = elem.get('tags', {})
+        for key, value in tags.items():
+            if key not in ['created_by', 'source']:
+                tag_key = f"{key}={value}"
+                common_tags[tag_key] = common_tags.get(tag_key, 0) + 1
+    
+    # Analyze modified elements
+    modified_tag_changes = []
+    for elem in modified:
+        elem_type = elem.get('type', 'unknown')
+        element_types[elem_type] = element_types.get(elem_type, 0) + 1
+        old_tags = elem.get('old_tags', {})
+        new_tags = elem.get('tags', {})
+        
+        # Find tag changes
+        all_keys = set(list(old_tags.keys()) + list(new_tags.keys()))
+        changes = []
+        for key in all_keys:
+            old_val = old_tags.get(key, None)
+            new_val = new_tags.get(key, None)
+            if old_val != new_val:
+                if old_val is None:
+                    changes.append(f"Added `{key}={new_val}`")
+                elif new_val is None:
+                    changes.append(f"Removed `{key}={old_val}`")
+                else:
+                    changes.append(f"Changed `{key}` from `{old_val}` to `{new_val}`")
+        
+        if changes:
+            modified_tag_changes.append({
+                'type': elem_type,
+                'id': elem.get('id'),
+                'name': new_tags.get('name', f"{elem_type} #{elem.get('id')}"),
+                'changes': changes
+            })
+    
+    # Analyze deleted elements
+    deleted_types = {}
+    for elem in deleted:
+        elem_type = elem.get('type', 'unknown')
+        deleted_types[elem_type] = deleted_types.get(elem_type, 0) + 1
+    
+    # Build analysis summary
+    total_changes = len(created) + len(modified) + len(deleted)
+    
+    # Get most common tags
+    top_tags = sorted(common_tags.items(), key=lambda x: x[1], reverse=True)[:5]
+    
+    # Build detailed analysis text
+    analysis = f"""## 📊 Changeset Analysis: #{changeset_id}
+
+### Overview
+
+This changeset contains **{total_changes} total changes**:
+- 🟢 **{len(created)} elements created**
+- 🟡 **{len(modified)} elements modified**
+- 🔴 **{len(deleted)} elements deleted**
+
+"""
+    
+    # Element type breakdown
+    if any(element_types.values()):
+        analysis += "### 📋 Element Type Breakdown\n\n"
+        for elem_type, count in element_types.items():
+            if count > 0:
+                analysis += f"- **{elem_type.capitalize()}s**: {count}\n"
+        analysis += "\n"
+    
+    # Created elements analysis
+    if created:
+        analysis += f"### 🟢 Created Elements Analysis\n\n"
+        if top_tags:
+            analysis += "**Most common tags in new elements:**\n"
+            for tag, count in top_tags:
+                analysis += f"- `{tag}` ({count} times)\n"
+            analysis += "\n"
+        
+        # Categorize created elements
+        buildings = [e for e in created if e.get('tags', {}).get('building')]
+        roads = [e for e in created if e.get('tags', {}).get('highway')]
+        pois = [e for e in created if e.get('tags', {}).get('amenity') or e.get('tags', {}).get('shop')]
+        
+        if buildings:
+            analysis += f"- **Buildings**: {len(buildings)} new building(s) added\n"
+        if roads:
+            analysis += f"- **Roads**: {len(roads)} new road segment(s) added\n"
+        if pois:
+            analysis += f"- **POIs**: {len(pois)} new point(s) of interest added\n"
+        analysis += "\n"
+    
+    # Modified elements analysis
+    if modified:
+        analysis += f"### 🟡 Modified Elements Analysis\n\n"
+        analysis += f"**{len(modified)} elements were modified** with tag changes.\n\n"
+        
+        if modified_tag_changes:
+            # Show sample of significant changes
+            significant_changes = modified_tag_changes[:10]
+            analysis += "**Sample of tag modifications:**\n\n"
+            for change in significant_changes:
+                name = change['name']
+                changes_list = change['changes'][:3]  # Show first 3 changes
+                analysis += f"- **{name}** ({change['type']}):\n"
+                for chg in changes_list:
+                    analysis += f"  - {chg}\n"
+                if len(change['changes']) > 3:
+                    analysis += f"  - ... and {len(change['changes']) - 3} more change(s)\n"
+                analysis += "\n"
+            
+            if len(modified_tag_changes) > 10:
+                analysis += f"\n*... and {len(modified_tag_changes) - 10} more modified elements*\n\n"
+    
+    # Deleted elements analysis
+    if deleted:
+        analysis += f"### 🔴 Deleted Elements Analysis\n\n"
+        analysis += f"**{len(deleted)} elements were deleted**.\n\n"
+        
+        if deleted_types:
+            analysis += "**Breakdown by type:**\n"
+            for elem_type, count in deleted_types.items():
+                analysis += f"- **{elem_type.capitalize()}s**: {count}\n"
+            analysis += "\n"
+        
+        # Check for important deletions
+        important_deletions = []
+        for elem in deleted:
+            tags = elem.get('tags', {})
+            if tags.get('highway') in ['primary', 'secondary', 'trunk', 'motorway']:
+                important_deletions.append(f"{tags.get('highway', 'road')} (way #{elem.get('id')})")
+            elif tags.get('building'):
+                building_name = tags.get('name', f"way #{elem.get('id')}")
+                important_deletions.append(f"Building: {building_name}")
+        
+        if important_deletions:
+            analysis += "⚠️ **Important deletions detected:**\n"
+            for deletion in important_deletions[:5]:
+                analysis += f"- {deletion}\n"
+            analysis += "\n"
+    
+    # Quality assessment
+    analysis += "### ✅ Quality Assessment\n\n"
+    
+    # Check for missing tags
+    missing_name = sum(1 for e in created if not e.get('tags', {}).get('name'))
+    missing_addr = sum(1 for e in created if e.get('tags', {}).get('building') and not any(k.startswith('addr:') for k in e.get('tags', {}).keys()))
+    
+    if missing_name == 0 and missing_addr == 0:
+        analysis += "✅ **Excellent tagging** - All created elements have proper names and addresses where applicable\n\n"
+    else:
+        if missing_name > 0:
+            analysis += f"⚠️ **{missing_name} created element(s) missing `name` tag** - Consider adding names for better discoverability\n\n"
+        if missing_addr > 0:
+            analysis += f"⚠️ **{missing_addr} building(s) missing address tags** - Consider adding `addr:*` tags\n\n"
+    
+    # Pattern detection
+    analysis += "### 🔍 Pattern Detection\n\n"
+    
+    if len(modified) > len(created) + len(deleted):
+        analysis += "- **Update-focused changeset**: Primarily modifies existing elements rather than adding/removing\n\n"
+    elif len(created) > len(modified) + len(deleted):
+        analysis += "- **Expansion-focused changeset**: Primarily adds new elements to the map\n\n"
+    elif len(deleted) > len(created) + len(modified):
+        analysis += "⚠️ **Deletion-focused changeset**: More deletions than additions - verify all deletions are intentional\n\n"
+    
+    # Recommendations
+    analysis += "### 💡 Recommendations\n\n"
+    
+    if len(deleted) > 10:
+        analysis += "- **Review deletions carefully** - This changeset contains a significant number of deletions. Verify each one is correct.\n\n"
+    
+    if len(modified) > 20:
+        analysis += "- **Bulk modification detected** - Consider breaking large changesets into smaller, focused ones for easier review.\n\n"
+    
+    if not missing_name and not missing_addr:
+        analysis += "- **Great work!** This changeset follows OSM best practices with proper tagging.\n\n"
+    
+    analysis += f"\n---\n\n"
+    analysis += f"🔗 [View on OSM](https://www.openstreetmap.org/changeset/{changeset_id}) | "
+    analysis += f"[View on OSMCha](https://osmcha.org/changesets/{changeset_id})"
+    
+    return analysis
 
 def calculate_way_center(node_refs, node_coords):
     """
@@ -2774,17 +3121,17 @@ def fetch_changeset_data(changeset_id):
             if download_response.status_code == 200:
                 download_root = ET.fromstring(download_response.content)
                 
-                # Count different types of changes
+                # Count different types of changes - FILTER: Only count routing elements (roads)
                 # Look for elements inside create/modify/delete parent tags
-                created = len(download_root.findall('.//create/*'))
-                modified = len(download_root.findall('.//modify/*'))
-                deleted = len(download_root.findall('.//delete/*'))
+                created = sum(1 for elem in download_root.findall('.//create/*') if is_routing_element(elem))
+                modified = sum(1 for elem in download_root.findall('.//modify/*') if is_routing_element(elem))
+                deleted = sum(1 for elem in download_root.findall('.//delete/*') if is_routing_element(elem))
                 
                 data['created'] = created
                 data['modified'] = modified
                 data['deleted'] = deleted
                 
-                print(f"Changeset {changeset_id}: created={created}, modified={modified}, deleted={deleted}")
+                print(f"Changeset {changeset_id}: created={created}, modified={modified}, deleted={deleted} (routing elements only)")
             else:
                 print(f"Download endpoint returned status {download_response.status_code} for changeset {changeset_id}")
                 data['created'] = 0
@@ -2815,10 +3162,10 @@ def generate_comparison_response(changeset_id):
         
         root = ET.fromstring(response.content)
         
-        # Count elements
-        created_count = len(root.findall('.//create/*'))
-        modified_count = len(root.findall('.//modify/*'))
-        deleted_count = len(root.findall('.//delete/*'))
+        # Count elements - FILTER: Only count routing elements (roads)
+        created_count = sum(1 for elem in root.findall('.//create/*') if is_routing_element(elem))
+        modified_count = sum(1 for elem in root.findall('.//modify/*') if is_routing_element(elem))
+        deleted_count = sum(1 for elem in root.findall('.//delete/*') if is_routing_element(elem))
         total = created_count + modified_count + deleted_count
         
         if total == 0:
@@ -2865,13 +3212,17 @@ I'll show you the **side-by-side before and after** changes with interactive map
 
 """
         
-        # Show created elements (sample)
+        # Show created elements (sample) - FILTER: Only show routing elements (roads)
         if created_count > 0:
             response_text += "### 🟢 **Created Elements**\n\n"
             create_elem = root.find('create')
             if create_elem is not None:
                 shown = 0
                 for elem in create_elem:
+                    # Only process routing elements (roads)
+                    if not is_routing_element(elem):
+                        continue
+                        
                     if shown >= 5:  # Limit to first 5
                         response_text += f"\n*...and {created_count - shown} more created elements*\n"
                         break
@@ -2891,13 +3242,17 @@ I'll show you the **side-by-side before and after** changes with interactive map
                     shown += 1
                 response_text += "\n"
         
-        # Show modified elements with before/after tags
+        # Show modified elements with before/after tags - FILTER: Only show routing elements (roads)
         if modified_count > 0:
             response_text += "### 🟡 **Modified Elements**\n\n"
             modify_elem = root.find('modify')
             if modify_elem is not None:
                 shown = 0
                 for elem in modify_elem:
+                    # Only process routing elements (roads)
+                    if not is_routing_element(elem):
+                        continue
+                        
                     if shown >= 3:  # Limit to first 3 for detailed view
                         response_text += f"\n*...and {modified_count - shown} more modified elements*\n"
                         break
@@ -2976,13 +3331,17 @@ I'll show you the **side-by-side before and after** changes with interactive map
 """
                 response_text += "\n"
         
-        # Show deleted elements (sample)
+        # Show deleted elements (sample) - FILTER: Only show routing elements (roads)
         if deleted_count > 0:
             response_text += "### 🔴 **Deleted Elements**\n\n"
             delete_elem = root.find('delete')
             if delete_elem is not None:
                 shown = 0
                 for elem in delete_elem:
+                    # Only process routing elements (roads)
+                    if not is_routing_element(elem):
+                        continue
+                        
                     if shown >= 5:  # Limit to first 5
                         response_text += f"\n*...and {deleted_count - shown} more deleted elements*\n"
                         break
