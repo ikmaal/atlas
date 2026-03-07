@@ -589,7 +589,7 @@ function initializeMapComparison(messageElement) {
                     <span>Deleted</span>
                 </div>
                 <div class="atlas-map-legend-item">
-                    <span style="margin-left: 12px;">💡 Click and drag to pan, scroll to zoom</span>
+                    <span style="margin-left: 12px;">Click and drag to pan, scroll to zoom</span>
                 </div>
             </div>
         </div>

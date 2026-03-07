@@ -14,11 +14,11 @@ let dashboardValidationVisibility = {
 // Initialize all analytics charts
 function initializeAnalyticsCharts() {
     if (chartsInitialized) {
-        console.log('📊 Charts already initialized');
+        console.log('Charts already initialized');
         return;
     }
 
-    console.log('📊 Initializing analytics charts...');
+    console.log('Initializing analytics charts...');
 
     // Changes Over Time Chart (Line Chart)
     const timelineCtx = document.getElementById('changesTimelineChart');
@@ -231,7 +231,7 @@ function initializeAnalyticsCharts() {
     }
 
     chartsInitialized = true;
-    console.log('📊 Analytics charts initialized successfully');
+    console.log('Analytics charts initialized successfully');
 }
 
 // Update stats cards from analytics data for consistency
@@ -263,7 +263,7 @@ function updateStatsCardsFromAnalytics(summary, validation) {
         // Use summary.needs_review as the primary source (it's from the full analytics)
         // validation?.needs_review may be 0 if the validation data comes from a limited dataset
         const needsReview = summary.needs_review || validation?.needs_review || 0;
-        console.log('📊 Needs review debug - summary.needs_review:', summary.needs_review, 'validation?.needs_review:', validation?.needs_review, 'final:', needsReview);
+        console.log('Needs review debug - summary.needs_review:', summary.needs_review, 'validation?.needs_review:', validation?.needs_review, 'final:', needsReview);
         if (typeof animateValue === 'function') {
             animateValue('changesetsNeedingReview', 0, needsReview, 1000);
         } else {
@@ -271,7 +271,7 @@ function updateStatsCardsFromAnalytics(summary, validation) {
         }
     }
     
-    console.log('📊 Stats cards updated from analytics:', summary.total_changesets, 'changesets,', summary.total_edits, 'edits, needs_review:', summary.needs_review);
+    console.log('Stats cards updated from analytics:', summary.total_changesets, 'changesets,', summary.total_edits, 'edits, needs_review:', summary.needs_review);
 }
 
 // Update dashboard summary
@@ -315,13 +315,13 @@ function updateDashboardSummary(summary) {
         if (summary.needs_review > 0) {
             messages.push(`
                 <p class="summary-text">
-                    ⚠️ <span class="summary-stat warning">${summary.needs_review}</span> changesets currently need review.
+                    <span class="summary-stat warning">${summary.needs_review}</span> changesets currently need review.
                 </p>
             `);
         } else {
             messages.push(`
                 <p class="summary-text">
-                    ✅ All changesets have been validated.
+                    All changesets have been validated.
                 </p>
             `);
         }
@@ -370,7 +370,7 @@ async function updateAnalyticsCharts() {
             loadingSpinner.style.display = 'block';
         }
 
-        console.log('📊 Fetching analytics data');
+        console.log('Fetching analytics data');
 
         // Fetch analytics data with region parameter
         const regionParam = typeof currentRegion !== 'undefined' ? `region=${encodeURIComponent(currentRegion)}` : 'region=singapore';
@@ -384,7 +384,7 @@ async function updateAnalyticsCharts() {
         }
         
         const analytics = data.analytics;
-        console.log('📊 Analytics data received:', analytics);
+        console.log('Analytics data received:', analytics);
         
         // Update Timeline Chart
         if (analytics.timeline && analyticsCharts.timeline) {
@@ -421,7 +421,7 @@ async function updateAnalyticsCharts() {
         // Update geographic distribution
         updateGeoDistribution();
         
-        console.log('📊 Analytics charts updated successfully');
+        console.log('Analytics charts updated successfully');
     } catch (error) {
         console.error('Error updating analytics charts:', error);
         showError('Error updating analytics charts: ' + error.message);
@@ -503,7 +503,7 @@ function initializeDashboardMap() {
         // Set max bounds and min zoom
         dashboardMap.setMaxBounds(dashboardPolygonLayer.getBounds().pad(0.5));
         dashboardMap.setMinZoom(regionMinZoom);
-        console.log(`✅ ${regionName} boundary polygon ready for dashboard map (hidden by default)`);
+        console.log(`${regionName} boundary polygon ready for dashboard map (hidden by default)`);
     }
     
     // Initialize marker cluster
@@ -526,12 +526,12 @@ function updateDashboardLegend() {
         <div class="legend-item interactive ${dashboardValidationVisibility.valid ? 'active' : 'inactive'}" onclick="toggleDashboardValidationVisibility('valid')">
             <span class="legend-color" style="background: #10b981;"></span>
             <span class="legend-label">✓ Valid</span>
-            <span class="legend-toggle">${dashboardValidationVisibility.valid ? '👁️' : '👁️‍🗨️'}</span>
+            <span class="legend-toggle">${dashboardValidationVisibility.valid ? 'Show' : 'Hide'}</span>
         </div>
         <div class="legend-item interactive ${dashboardValidationVisibility.needs_review ? 'active' : 'inactive'}" onclick="toggleDashboardValidationVisibility('needs_review')">
             <span class="legend-color" style="background: #f59e0b;"></span>
-            <span class="legend-label">🔍 Needs Review</span>
-            <span class="legend-toggle">${dashboardValidationVisibility.needs_review ? '👁️' : '👁️‍🗨️'}</span>
+            <span class="legend-label">Needs Review</span>
+            <span class="legend-toggle">${dashboardValidationVisibility.needs_review ? 'Show' : 'Hide'}</span>
         </div>
     `;
 }
@@ -581,7 +581,7 @@ function renderDashboardMapMarkers(changesets) {
                 fillOpacity: 0.8
             });
             
-            const validationBadge = cs.validation?.status === 'needs_review' ? '🔍 Needs Review' : '✓ Valid';
+            const validationBadge = cs.validation?.status === 'needs_review' ? 'Needs Review' : 'Valid';
             
             marker.bindPopup(`
                 <div style="min-width: 200px;">
@@ -689,7 +689,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     if (dashboardTab) {
         dashboardTab.addEventListener('click', function() {
-            console.log('📊 Dashboard tab clicked');
+            console.log('Dashboard tab clicked');
             
             // Initialize charts if not already done
             if (!chartsInitialized) {
@@ -713,7 +713,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Check if dashboard is the active tab on page load
     const dashboardContent = document.getElementById('dashboard');
     if (dashboardContent && dashboardContent.classList.contains('active')) {
-        console.log('📊 Dashboard is active on page load');
+        console.log('Dashboard is active on page load');
         setTimeout(() => {
             initializeAnalyticsCharts();
             updateAnalyticsCharts();
@@ -738,11 +738,11 @@ const REGION_AREAS = {
     singapore: {
         name: 'Singapore',
         areas: [
-            { id: 'north', name: 'North', icon: '🌲', bounds: { minLat: 1.38, maxLat: 1.48, minLon: 103.75, maxLon: 103.88 } },
-            { id: 'south', name: 'South', icon: '🏝️', bounds: { minLat: 1.24, maxLat: 1.30, minLon: 103.78, maxLon: 103.88 } },
-            { id: 'east', name: 'East', icon: '🌅', bounds: { minLat: 1.28, maxLat: 1.38, minLon: 103.88, maxLon: 104.05 } },
-            { id: 'west', name: 'West', icon: '🏭', bounds: { minLat: 1.28, maxLat: 1.42, minLon: 103.60, maxLon: 103.75 } },
-            { id: 'central', name: 'Central', icon: '🏙️', bounds: { minLat: 1.26, maxLat: 1.38, minLon: 103.78, maxLon: 103.88 } }
+            { id: 'north', name: 'North', icon: '', bounds: { minLat: 1.38, maxLat: 1.48, minLon: 103.75, maxLon: 103.88 } },
+            { id: 'south', name: 'South', icon: '', bounds: { minLat: 1.24, maxLat: 1.30, minLon: 103.78, maxLon: 103.88 } },
+            { id: 'east', name: 'East', icon: '', bounds: { minLat: 1.28, maxLat: 1.38, minLon: 103.88, maxLon: 104.05 } },
+            { id: 'west', name: 'West', icon: '', bounds: { minLat: 1.28, maxLat: 1.42, minLon: 103.60, maxLon: 103.75 } },
+            { id: 'central', name: 'Central', icon: '', bounds: { minLat: 1.26, maxLat: 1.38, minLon: 103.78, maxLon: 103.88 } }
         ]
     }
 };
@@ -898,5 +898,5 @@ async function updateGeoDistribution() {
     }
 }
 
-console.log('📊 Analytics.js loaded');
+console.log('Analytics.js loaded');
 

@@ -9,13 +9,8 @@ A real-time dashboard for tracking and monitoring OpenStreetMap changesets in th
 - 👥 User contribution tracking
 - 🗓️ Timeline view of recent changes
 - ⚠️ **Validation System** - Automatic detection of suspicious changesets
-- 🔐 **OAuth Login** - Login with your OSM account to view your profile and edits
-- 📝 **My Edits** - View all your changesets in Singapore
 - 🗺️ **Map Search** - Search for locations in Singapore
 - 🎨 Modern, responsive UI with tabbed interface
-- 📝 Rich text formatting with emojis
-- 🎨 Colorful notes with background color picker
-- 📌 Notes system with images, links, and tags
 
 ## Installation
 
@@ -24,12 +19,7 @@ A real-time dashboard for tracking and monitoring OpenStreetMap changesets in th
 pip install -r requirements.txt
 ```
 
-2. **(Optional) Set up OAuth for Login Feature:**
-   - See [OAUTH_SETUP.md](OAUTH_SETUP.md) for detailed instructions
-   - You'll need to register an application at https://www.openstreetmap.org/oauth2/applications
-   - Set your OAuth credentials as environment variables
-
-3. Run the application:
+2. Run the application:
 ```bash
 python app.py
 ```

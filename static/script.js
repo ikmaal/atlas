@@ -1,15 +1,10 @@
 // Global variables
 let map;
-let myEditsMap;
 let markers = [];
-let myEditsMarkers = [];
 let markerCluster;
-let myEditsMarkerCluster;
 let changesets = [];
-let myEditsChangesets = [];
 let mapViewMode = 'validation'; // Always show validation colors
 let visualizationLayer = null; // Layer for AI visualization
-let myEditsVisualizationLayer = null; // Layer for My Edits AI visualization
 
 // Region configuration
 let regions = {};
@@ -61,7 +56,7 @@ function saveNeedsReviewChangeset(changeset) {
                 storedFromRegion: currentRegion
             };
             localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
-            console.log(`💾 Stored needs_review changeset ${changesetId} permanently`);
+            console.log(`Stored needs_review changeset ${changesetId} permanently`);
         }
     } catch (error) {
         console.error('Error saving needs_review changeset:', error);
@@ -109,7 +104,7 @@ function saveGrabChangeset(changeset) {
                 storedFromRegion: currentRegion
             };
             localStorage.setItem(GRAB_STORAGE_KEY, JSON.stringify(stored));
-            console.log(`💾 Stored Grab changeset ${changesetId} permanently`);
+            console.log(`Stored Grab changeset ${changesetId} permanently`);
         }
     } catch (error) {
         console.error('Error saving Grab changeset:', error);
@@ -137,13 +132,13 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Log stored needs_review changesets count
     const storedCount = Object.keys(loadStoredNeedsReviewChangesets()).length;
     if (storedCount > 0) {
-        console.log(`💾 Loaded ${storedCount} stored needs_review changesets from database`);
+        console.log(`Loaded ${storedCount} stored needs_review changesets from database`);
     }
     
     // Log stored Grab changesets count
     const storedGrabCount = Object.keys(loadStoredGrabChangesets()).length;
     if (storedGrabCount > 0) {
-        console.log(`💾 Loaded ${storedGrabCount} stored Grab changesets from database`);
+        console.log(`Loaded ${storedGrabCount} stored Grab changesets from database`);
     }
     
     initMap();
@@ -162,7 +157,10 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
 
     // Set up tab switching
-    initTabs();
+    // Use setTimeout to ensure DOM is fully ready
+    setTimeout(() => {
+        initTabs();
+    }, 100);
     
     // Initialize Atlas AI greeting (for compatibility)
     if (typeof initAtlasGreeting === 'function') {
@@ -183,8 +181,6 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Set up map legend and view toggle
     initMapControls();
 
-    // Load user profile
-    loadUserProfile();
 
     // Auto-refresh every 5 minutes
     setInterval(loadData, 5 * 60 * 1000);
@@ -308,7 +304,7 @@ async function switchRegion(regionId) {
     
     // Set a timeout to auto-hide the loading overlay if loading takes too long
     const loadingTimeout = setTimeout(() => {
-        console.warn('⚠️ Region switch took too long, hiding loading overlay');
+        console.warn('WARNING: Region switch took too long, hiding loading overlay');
         hideRegionLoadingOverlay();
     }, 60000); // 60 second timeout
     
@@ -325,15 +321,10 @@ async function switchRegion(regionId) {
             updateRegionLoadingProgress(85, 'Analytics loaded');
         }
         
-        // Step 5: Load user data if logged in (95%)
-        if (document.getElementById('myEditsBtn')?.style.display !== 'none') {
-            updateRegionLoadingProgress(90, 'Loading your edits...');
-            loadMyEdits();
-        }
         
         updateRegionLoadingProgress(100, 'Complete!');
     } catch (error) {
-        console.error('❌ Error switching region:', error);
+        console.error('ERROR: Error switching region:', error);
         updateRegionLoadingProgress(100, 'Error - please try again');
     } finally {
         // Clear the timeout since we're done
@@ -398,25 +389,6 @@ function updateMapForRegion() {
         }
     }
     
-    // Update myEditsMap if initialized
-    if (myEditsMap && currentRegionData.polygon && currentRegionData.polygon.length > 0) {
-        myEditsMap.setView(currentRegionData.center, currentRegionData.zoom);
-        
-        if (myEditsPolygonLayer) {
-            myEditsMap.removeLayer(myEditsPolygonLayer);
-        }
-        
-        // Use helper function to handle both single and multi-polygon regions
-        myEditsPolygonLayer = createRegionPolygonLayer(myEditsMap);
-        
-        myEditsMap.fitBounds(myEditsPolygonLayer.getBounds(), { padding: [20, 20] });
-        myEditsMap.setMaxBounds(myEditsPolygonLayer.getBounds().pad(0.5));
-        myEditsMap.setMinZoom(currentRegionData.minZoom || 5);
-        
-        if (regionBoundaryVisible) {
-            myEditsPolygonLayer.addTo(myEditsMap);
-        }
-    }
 }
 
 // Initialize tab functionality (see updated version below with map invalidation)
@@ -515,7 +487,7 @@ function applyFilters() {
             }
         });
         
-        console.log(`🔍 Including ${storedNeedsReview.length} stored needs_review changesets`);
+        console.log(`Including ${storedNeedsReview.length} stored needs_review changesets`);
     }
     
     // If filtering by grab, include stored Grab changesets
@@ -530,7 +502,7 @@ function applyFilters() {
             }
         });
         
-        console.log(`🔍 Including ${storedGrab.length} stored Grab changesets`);
+        console.log(`Including ${storedGrab.length} stored Grab changesets`);
     }
 
     if (changesetsToFilter.length === 0) {
@@ -586,7 +558,6 @@ function applyFilters() {
 // Region boundary visibility state
 let regionBoundaryVisible = false;
 let regionPolygonLayer = null;
-let myEditsPolygonLayer = null;
 let dashboardPolygonLayer = null;
 
 // Legacy alias for backward compatibility
@@ -754,8 +725,6 @@ function setupMapVisibilityObserver() {
                 // Invalidate the appropriate map
                 if (containerId === 'map' && map) {
                     invalidateMapSize(map, 100);
-                } else if (containerId === 'myEditsMap' && myEditsMap) {
-                    invalidateMapSize(myEditsMap, 100);
                 } else if (containerId === 'dashboardMap' && typeof dashboardMap !== 'undefined' && dashboardMap) {
                     invalidateMapSize(dashboardMap, 100);
                 }
@@ -767,17 +736,15 @@ function setupMapVisibilityObserver() {
     
     // Observe all map containers
     const mapContainer = document.getElementById('map');
-    const myEditsMapContainer = document.getElementById('myEditsMap');
     const dashboardMapContainer = document.getElementById('dashboardMap');
     
     if (mapContainer) observer.observe(mapContainer);
-    if (myEditsMapContainer) observer.observe(myEditsMapContainer);
     if (dashboardMapContainer) observer.observe(dashboardMapContainer);
 }
 
 // Initialize Leaflet map
 function initMap() {
-    console.log('🗺️ Initializing map...');
+    console.log('Initializing map...');
     
     // Get region center and zoom, or fall back to Singapore
     const regionCenter = currentRegionData?.center || [1.3521, 103.8198];
@@ -785,7 +752,7 @@ function initMap() {
     const regionMinZoom = currentRegionData?.minZoom || 10;
     
     map = L.map('map').setView(regionCenter, regionZoom);
-    console.log('✅ Map initialized');
+    console.log('Map initialized');
     
     // Add CartoDB Light tile layer (clean, modern style)
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
@@ -810,7 +777,7 @@ function initMap() {
     map.fitBounds(regionPolygonLayer.getBounds(), { padding: [20, 20] });
     map.setMaxBounds(regionPolygonLayer.getBounds().pad(0.5));
     map.setMinZoom(regionMinZoom);
-    console.log(`✅ ${currentRegionData?.name || 'Region'} boundary polygon ready (hidden by default)`);
+    console.log(`${currentRegionData?.name || 'Region'} boundary polygon ready (hidden by default)`);
 
     // Initialize marker cluster group
     markerCluster = L.markerClusterGroup({
@@ -832,7 +799,7 @@ function initMap() {
         }
     });
     map.addLayer(markerCluster);
-    console.log('✅ Marker cluster initialized');
+    console.log('Marker cluster initialized');
 }
 
 // Toggle region boundary polygon visibility
@@ -848,15 +815,6 @@ function toggleRegionBoundary() {
             regionPolygonLayer.addTo(map);
         } else {
             map.removeLayer(regionPolygonLayer);
-        }
-    }
-    
-    // Toggle on My Edits map
-    if (myEditsMap && myEditsPolygonLayer) {
-        if (regionBoundaryVisible) {
-            myEditsPolygonLayer.addTo(myEditsMap);
-        } else {
-            myEditsMap.removeLayer(myEditsPolygonLayer);
         }
     }
     
@@ -883,145 +841,13 @@ function toggleRegionBoundary() {
         }
     });
     
-    console.log(`🗺️ ${regionName} boundary ${regionBoundaryVisible ? 'shown' : 'hidden'}`);
+    console.log(`${regionName} boundary ${regionBoundaryVisible ? 'shown' : 'hidden'}`);
 }
 
 // Legacy alias for backward compatibility
 function toggleSingaporeBoundary() {
     toggleRegionBoundary();
 }
-
-// Initialize My Edits map
-function initMyEditsMap() {
-    if (myEditsMap) {
-        return; // Already initialized
-    }
-    
-    // Get region center and zoom, or fall back to Singapore
-    const regionCenter = currentRegionData?.center || [1.3521, 103.8198];
-    const regionZoom = currentRegionData?.zoom || 11;
-    const regionMinZoom = currentRegionData?.minZoom || 10;
-    
-    myEditsMap = L.map('myEditsMap').setView(regionCenter, regionZoom);
-    
-    // Add CartoDB Light tile layer (clean, modern style)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        maxZoom: 19,
-        subdomains: 'abcd'
-    }).addTo(myEditsMap);
-
-    // Create a custom pane for the region boundary to ensure visibility
-    myEditsMap.createPane('boundaryPane');
-    myEditsMap.getPane('boundaryPane').style.zIndex = 650;
-    
-    // Create region boundary polygon for myEditsMap (hidden by default, shared visibility state)
-    // Uses createRegionPolygonLayer to handle both single and multi-polygon regions
-    myEditsPolygonLayer = createRegionPolygonLayer(myEditsMap);
-    // Add if boundary is currently visible
-    if (regionBoundaryVisible) {
-        myEditsPolygonLayer.addTo(myEditsMap);
-    }
-    
-    // Fit map to region bounds and restrict panning
-    myEditsMap.fitBounds(myEditsPolygonLayer.getBounds(), { padding: [20, 20] });
-    myEditsMap.setMaxBounds(myEditsPolygonLayer.getBounds().pad(0.5));
-    myEditsMap.setMinZoom(regionMinZoom);
-
-    // Initialize marker cluster group
-    myEditsMarkerCluster = L.markerClusterGroup({
-        maxClusterRadius: 50,
-        spiderfyOnMaxZoom: true,
-        showCoverageOnHover: false,
-        zoomToBoundsOnClick: true,
-        iconCreateFunction: function(cluster) {
-            const count = cluster.getChildCount();
-            let size = 'small';
-            if (count > 100) size = 'large';
-            else if (count > 50) size = 'medium';
-            
-            return L.divIcon({
-                html: '<div><span>' + count + '</span></div>',
-                className: 'marker-cluster marker-cluster-' + size,
-                iconSize: L.point(40, 40)
-            });
-        }
-    });
-    myEditsMap.addLayer(myEditsMarkerCluster);
-}
-
-// Update My Edits map with changesets
-function updateMyEditsMap(changesets) {
-    if (!myEditsMap || !myEditsMarkerCluster) {
-        console.error('My Edits map not initialized');
-        return;
-    }
-    
-    // Clear existing markers
-    myEditsMarkerCluster.clearLayers();
-    myEditsMarkers = [];
-    
-    // Add new markers
-    changesets.forEach(cs => {
-        if (cs.bbox && cs.bbox.min_lat && cs.bbox.max_lat && cs.bbox.min_lon && cs.bbox.max_lon) {
-            // Calculate center of bounding box
-            const centerLat = (cs.bbox.min_lat + cs.bbox.max_lat) / 2;
-            const centerLon = (cs.bbox.min_lon + cs.bbox.max_lon) / 2;
-            
-            // Create marker with color based on validation status
-            const fillColor = getColorForValidation(cs.validation);
-            
-            const marker = L.circleMarker([centerLat, centerLon], {
-                radius: Math.min(Math.log(cs.num_changes + 1) * 4, 20) + 5,
-                fillColor: fillColor,
-                color: '#fff',
-                weight: 3,
-                opacity: 1,
-                fillOpacity: 0.85
-            });
-            
-            // Build popup content
-            let detailsHTML = '';
-            if (cs.details) {
-                detailsHTML = `
-                    <div style="margin-top: 8px;">
-                        <strong>Edit Breakdown:</strong><br>
-                        ➕ Created: ${formatNumber(cs.details.total_created)}<br>
-                        ✏️ Modified: ${formatNumber(cs.details.total_modified)}<br>
-                        🗑️ Deleted: ${formatNumber(cs.details.total_deleted)}
-                    </div>
-                `;
-            }
-            
-            const popupContent = `
-                <div class="popup-content">
-                    <h3>${escapeHtml(cs.user)}</h3>
-                    <p><strong>Changeset:</strong> <a href="https://www.openstreetmap.org/changeset/${cs.id}" target="_blank">#${cs.id}</a></p>
-                    <p><strong>Changes:</strong> ${formatNumber(cs.num_changes)}</p>
-                    <p><strong>Comment:</strong> ${escapeHtml(cs.comment)}</p>
-                    <p><strong>Editor:</strong> ${escapeHtml(cs.created_by)}</p>
-                    <p><strong>Date:</strong> ${formatDate(cs.created_at)}</p>
-                    ${detailsHTML}
-                </div>
-            `;
-            
-            marker.bindPopup(popupContent);
-            myEditsMarkerCluster.addLayer(marker);
-            myEditsMarkers.push(marker);
-        }
-    });
-    
-    // Fit bounds to show all markers if there are any
-    if (myEditsMarkers.length > 0) {
-        setTimeout(() => {
-            myEditsMap.fitBounds(myEditsMarkerCluster.getBounds(), {
-                padding: [50, 50],
-                maxZoom: 13
-            });
-        }, 100);
-    }
-}
-
 
 
 // Load all data
@@ -1039,12 +865,12 @@ async function loadData() {
         const changesetsData = await changesetsResponse.json();
         const statsData = await statsResponse.json();
         
-        console.log(`📊 Changesets API response for ${currentRegion}:`, changesetsData);
-        console.log('📊 Number of changesets:', changesetsData.changesets?.length);
+        console.log(`Changesets API response for ${currentRegion}:`, changesetsData);
+        console.log('Number of changesets:', changesetsData.changesets?.length);
         
         if (changesetsData.success) {
             changesets = changesetsData.changesets;
-            console.log('✅ Setting changesets array:', changesets.length);
+            console.log('Setting changesets array:', changesets.length);
             
             // Save any needs_review changesets to persistent storage
             changesets.forEach(cs => {
@@ -1060,9 +886,9 @@ async function loadData() {
             
             // Apply current filters (this will include stored needs_review changesets if filter is active)
             applyFilters();
-            console.log('✅ Updated changesets list and applied filters');
+            console.log('Updated changesets list and applied filters');
         } else {
-            console.error('❌ Changesets API returned success: false');
+            console.error('ERROR: Changesets API returned success: false');
         }
         
         if (statsData.success) {
@@ -1162,10 +988,10 @@ function updateChangesetsList(changesets) {
                 parts.push(`<span class="badge badge-created">➕ ${formatNumber(details.total_created)} added</span>`);
             }
             if (details.total_modified > 0) {
-                parts.push(`<span class="badge badge-modified">✏️ ${formatNumber(details.total_modified)} modified</span>`);
+                parts.push(`<span class="badge badge-modified">${formatNumber(details.total_modified)} modified</span>`);
             }
             if (details.total_deleted > 0) {
-                parts.push(`<span class="badge badge-deleted">🗑️ ${formatNumber(details.total_deleted)} deleted</span>`);
+                parts.push(`<span class="badge badge-deleted">${formatNumber(details.total_deleted)} deleted</span>`);
             }
             detailsHTML = parts.join(' ');
         } else {
@@ -1178,7 +1004,7 @@ function updateChangesetsList(changesets) {
             const validation = cs.validation;
             if (validation.status === 'needs_review') {
                 const reasons = validation.reasons.join(', ');
-                validationHTML = `<span class="badge badge-needs-review" title="${escapeHtml(reasons)}">🔍 Needs Review</span>`;
+                validationHTML = `<span class="badge badge-needs-review" title="${escapeHtml(reasons)}">Needs Review</span>`;
             } else {
                 validationHTML = `<span class="badge badge-valid">✓ Valid</span>`;
             }
@@ -1282,10 +1108,10 @@ function updateContributorsList(contributors) {
 
 // Update map with changeset markers
 function updateMap(changesets) {
-    console.log('🗺️ updateMap called with', changesets?.length, 'changesets');
+    console.log('updateMap called with', changesets?.length, 'changesets');
     
     if (!markerCluster) {
-        console.error('❌ markerCluster not initialized!');
+        console.error('ERROR: markerCluster not initialized!');
         return;
     }
     
@@ -1320,8 +1146,8 @@ function updateMap(changesets) {
             if (cs.validation) {
                 const status = cs.validation.status;
                 const badgeClass = `badge-${status}`;
-                const badgeText = status === 'valid' ? '✓ Valid' : 
-                                 '🔍 Needs Review';
+                const badgeText = status === 'valid' ? 'Valid' : 
+                                 'Needs Review';
                 validationBadge = `<span class="badge ${badgeClass}">${badgeText}</span>`;
             }
             
@@ -1345,7 +1171,7 @@ function updateMap(changesets) {
         }
     });
     
-    console.log('🗺️ Created', markersCreated, 'markers out of', changesets.length, 'changesets');
+    console.log('Created', markersCreated, 'markers out of', changesets.length, 'changesets');
     
     // Update legend
     updateLegend();
@@ -1355,7 +1181,7 @@ function updateMap(changesets) {
 function filterToChangeset(changesetId) {
     const csId = parseInt(changesetId);
     if (isNaN(csId)) {
-        console.warn(`⚠️ Invalid changeset ID: ${changesetId}`);
+        console.warn(`WARNING: Invalid changeset ID: ${changesetId}`);
         return;
     }
     
@@ -1363,13 +1189,13 @@ function filterToChangeset(changesetId) {
     const targetChangeset = changesets.find(cs => cs.id === csId);
     
     if (!targetChangeset) {
-        console.warn(`⚠️ Changeset ${csId} not found in current data`);
+        console.warn(`WARNING: Changeset ${csId} not found in current data`);
         // Try to find in stored needs_review changesets
         const storedNeedsReview = getAllStoredNeedsReviewChangesets();
         const storedChangeset = storedNeedsReview.find(cs => cs.id === csId);
         
         if (storedChangeset) {
-            console.log(`✅ Found changeset ${csId} in stored needs_review changesets`);
+            console.log(`Found changeset ${csId} in stored needs_review changesets`);
             // Update map with just this changeset
             updateMap([storedChangeset]);
             
@@ -1399,11 +1225,11 @@ function filterToChangeset(changesetId) {
             return;
         }
         
-        console.warn(`⚠️ Changeset ${csId} not found in stored changesets either`);
+        console.warn(`WARNING: Changeset ${csId} not found in stored changesets either`);
         return;
     }
     
-    console.log(`✅ Found changeset ${csId}, filtering and zooming...`);
+    console.log(`Found changeset ${csId}, filtering and zooming...`);
     
     // Update map with just this changeset
     updateMap([targetChangeset]);
@@ -1466,12 +1292,12 @@ function updateLegend() {
         <div class="legend-item interactive ${validationVisibility.valid ? 'active' : 'inactive'}" onclick="toggleValidationVisibility('valid')">
             <span class="legend-color" style="background: #10b981;"></span>
             <span class="legend-label">✓ Valid</span>
-            <span class="legend-toggle">${validationVisibility.valid ? '👁️' : '👁️‍🗨️'}</span>
+            <span class="legend-toggle">${validationVisibility.valid ? 'Show' : 'Hide'}</span>
         </div>
         <div class="legend-item interactive ${validationVisibility.needs_review ? 'active' : 'inactive'}" onclick="toggleValidationVisibility('needs_review')">
             <span class="legend-color" style="background: #f59e0b;"></span>
-            <span class="legend-label">🔍 Needs Review</span>
-            <span class="legend-toggle">${validationVisibility.needs_review ? '👁️' : '👁️‍🗨️'}</span>
+            <span class="legend-label">Needs Review</span>
+            <span class="legend-toggle">${validationVisibility.needs_review ? 'Show' : 'Hide'}</span>
         </div>
     `;
 }
@@ -1572,7 +1398,7 @@ function animateValue(id, start, end, duration) {
     
     // Check if element exists before animating
     if (!element) {
-        console.warn(`⚠️ Element with id '${id}' not found for animation`);
+        console.warn(`WARNING: Element with id '${id}' not found for animation`);
         return;
     }
     
@@ -1685,14 +1511,14 @@ function updateSelectedResult(items) {
 
 function getLocationIcon(type) {
     const icons = {
-        'road': '🛣️',
-        'building': '🏢',
-        'railway': '🚇',
-        'station': '🚇',
-        'amenity': '📍',
-        'place': '🏙️',
-        'shop': '🛒',
-        'tourism': '🎡',
+        'road': '',
+        'building': '',
+        'railway': '',
+        'station': '',
+        'amenity': '',
+        'place': '',
+        'shop': '',
+        'tourism': '',
         'leisure': '🌳'
     };
     return icons[type] || '📍';
@@ -1804,208 +1630,71 @@ async function searchLocation(query) {
     }
 }
 
-// Load user profile
-async function loadUserProfile() {
-    try {
-        const response = await fetch('/api/user');
-        const data = await response.json();
-        
-        const userSection = document.getElementById('userSection');
-        const myEditsBtn = document.getElementById('myEditsBtn');
-        
-        if (data.logged_in) {
-            const user = data.user;
-            
-            // Show My Edits button
-            myEditsBtn.style.display = 'flex';
-            
-            // Display user profile
-            userSection.innerHTML = `
-                <div class="user-profile" onclick="openUserProfile('${escapeHtml(user.display_name)}')" style="cursor: pointer;" title="View your profile">
-                    ${user.img_url ? `<img src="${escapeHtml(user.img_url)}" alt="${escapeHtml(user.display_name)}" class="user-avatar">` : 
-                    `<div class="user-avatar-placeholder">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                            <circle cx="12" cy="7" r="4"></circle>
-                        </svg>
-                    </div>`}
-                    <div class="user-info">
-                        <div class="user-name">${escapeHtml(user.display_name)}</div>
-                        <div class="user-stats-small">${formatNumber(user.changeset_count)} changesets</div>
-                    </div>
-                    <button class="logout-btn" onclick="event.stopPropagation(); logout();" title="Logout">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-                            <polyline points="16 17 21 12 16 7"></polyline>
-                            <line x1="21" y1="12" x2="9" y2="12"></line>
-                        </svg>
-                    </button>
-                </div>
-            `;
-        } else {
-            // Hide My Edits button and clear user section
-            myEditsBtn.style.display = 'none';
-            userSection.innerHTML = '';
-        }
-    } catch (error) {
-        console.error('Error loading user profile:', error);
-    }
-}
-
-// Logout function
-function logout() {
-    window.location.href = '/oauth/logout';
-}
-
-// Load user's changesets
-async function loadMyEdits() {
-    const container = document.getElementById('myEditsList');
-    const loading = document.getElementById('myEditsLoading');
-    
-    if (loading) loading.style.display = 'block';
-    
-    const regionName = currentRegionData?.name || 'this region';
-    
-    try {
-        const regionParam = `region=${encodeURIComponent(currentRegion)}`;
-        const response = await fetch(`/api/user/changesets?${regionParam}`);
-        
-        if (!response.ok) {
-            throw new Error('Failed to load changesets');
-        }
-        
-        const data = await response.json();
-        const changesets = data.changesets;
-        
-        // Store globally
-        myEditsChangesets = changesets;
-        
-        if (!changesets || changesets.length === 0) {
-            container.innerHTML = `
-                <div class="empty-state">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                        <polyline points="14 2 14 8 20 8"></polyline>
-                        <line x1="16" y1="13" x2="8" y2="13"></line>
-                        <line x1="16" y1="17" x2="8" y2="17"></line>
-                        <polyline points="10 9 9 9 8 9"></polyline>
-                    </svg>
-                    <h3>No Changesets Found</h3>
-                    <p>You haven't made any changesets in ${regionName} yet.</p>
-                </div>
-            `;
-            return;
-        }
-        
-        // Build detailed HTML
-        container.innerHTML = changesets.map(cs => {
-            let detailsHTML = '';
-            if (cs.details) {
-                const details = cs.details;
-                const parts = [];
-                if (details.total_created > 0) {
-                    parts.push(`<span class="badge badge-created">➕ ${formatNumber(details.total_created)} added</span>`);
-                }
-                if (details.total_modified > 0) {
-                    parts.push(`<span class="badge badge-modified">✏️ ${formatNumber(details.total_modified)} modified</span>`);
-                }
-                if (details.total_deleted > 0) {
-                    parts.push(`<span class="badge badge-deleted">🗑️ ${formatNumber(details.total_deleted)} deleted</span>`);
-                }
-                detailsHTML = parts.join(' ');
-            } else {
-                detailsHTML = `<span class="badge badge-changes">${formatNumber(cs.num_changes)} changes</span>`;
-            }
-            
-            return `
-            <div class="changeset-item">
-                <div class="changeset-header">
-                    <div>
-                        <div class="changeset-user"><a href="javascript:void(0)" onclick="openUserProfile('${escapeHtml(cs.user)}')" class="user-link">${escapeHtml(cs.user)}</a></div>
-                        <div class="changeset-comment">${escapeHtml(cs.comment)}</div>
-                    </div>
-                    <div class="changeset-header-right">
-                        <button class="comparison-btn" onclick="showChangesetComparison('${cs.id}')" title="Compare before/after changes">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="16 18 22 12 16 6"></polyline>
-                                <polyline points="8 6 2 12 8 18"></polyline>
-                            </svg>
-                            Compare
-                        </button>
-                        <a href="https://osmcha.org/changesets/${cs.id}" target="_blank" class="osmcha-btn" title="Analyze in OSMCha">
-                            OSMCha
-                        </a>
-                        <a href="https://www.openstreetmap.org/changeset/${cs.id}" target="_blank" class="changeset-id">
-                            #${cs.id}
-                        </a>
-                    </div>
-                </div>
-                <div class="changeset-meta">
-                    ${detailsHTML}
-                    <span class="badge badge-editor">${escapeHtml(cs.created_by)}</span>
-                    <span>📅 ${formatDate(cs.created_at)}</span>
-                    <span>🕐 ${formatTime(cs.created_at)}</span>
-                </div>
-            </div>
-            `;
-        }).join('');
-        
-        // Update map with changesets
-        updateMyEditsMap(changesets);
-        
-    } catch (error) {
-        console.error('Error loading my edits:', error);
-        container.innerHTML = `
-            <div class="empty-state">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <line x1="12" y1="8" x2="12" y2="12"></line>
-                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                </svg>
-                <h3>Error Loading Changesets</h3>
-                <p>Could not load your changesets. Please try again later.</p>
-            </div>
-        `;
-    } finally {
-        if (loading) loading.style.display = 'none';
-    }
-}
-
-
-// Update initTabs to handle My Edits tab
-const originalInitTabs = initTabs;
+// Initialize tabs
 function initTabs() {
+    console.log('Initializing tabs...');
     const sidenavItems = document.querySelectorAll('.sidenav-item');
+    console.log('Found', sidenavItems.length, 'tab buttons');
 
-    sidenavItems.forEach(button => {
-        button.addEventListener('click', function() {
-            const targetTab = this.getAttribute('data-tab');
+    if (sidenavItems.length === 0) {
+        console.error('No tab buttons found!');
+        return;
+    }
+
+    // Convert NodeList to Array to avoid issues with DOM manipulation
+    Array.from(sidenavItems).forEach((button, index) => {
+        const targetTab = button.getAttribute('data-tab');
+        console.log(`Setting up tab ${index}: ${targetTab}`);
+        
+        // Remove any existing event listeners by cloning the button
+        const newButton = button.cloneNode(true);
+        button.parentNode.replaceChild(newButton, button);
+        
+        newButton.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const targetTabId = this.getAttribute('data-tab');
+            console.log('Tab clicked:', targetTabId);
+            
+            if (!targetTabId) {
+                console.error('No data-tab attribute found on button');
+                return;
+            }
             
             // Get current active tab before switching
             const currentActiveTab = document.querySelector('.tab-content.active')?.id || 
                                    document.querySelector('.sidenav-item.active')?.getAttribute('data-tab');
 
             // Remove active class from all buttons and contents
-            sidenavItems.forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.sidenav-item').forEach(btn => btn.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(content => {
                 content.classList.remove('active');
             });
 
             // Add active class to clicked button and corresponding content
             this.classList.add('active');
-            document.getElementById(targetTab).classList.add('active');
+            const targetTabElement = document.getElementById(targetTabId);
+            if (targetTabElement) {
+                targetTabElement.classList.add('active');
+                console.log('Switched to tab:', targetTabId);
+            } else {
+                console.error('Tab content element not found:', targetTabId);
+            }
 
             // Reset filters when returning to changesets tab (list-view)
             // This ensures filters reset to "All" when coming back from another tab
             const changesetsTab = 'list-view';
-            if (targetTab === changesetsTab && currentActiveTab !== changesetsTab) {
-                resetFilters();
+            if (targetTabId === changesetsTab && currentActiveTab !== changesetsTab) {
+                if (typeof resetFilters === 'function') {
+                    resetFilters();
+                }
             }
 
             // Show stats only on dashboard tab
             const dashboardStats = document.getElementById('dashboardStats');
             const dashboardTimeRange = document.getElementById('dashboardTimeRange');
-            if (targetTab === 'dashboard') {
+            if (targetTabId === 'dashboard') {
                 if (dashboardStats) dashboardStats.style.display = 'grid';
                 if (dashboardTimeRange) dashboardTimeRange.style.display = 'flex';
             } else {
@@ -2014,9 +1703,9 @@ function initTabs() {
             }
 
             // Load specific tab content and invalidate map sizes
-            if (targetTab === 'map-view' && map) {
+            if (targetTabId === 'map-view' && map) {
                 invalidateMapSize(map);
-            } else if (targetTab === 'dashboard') {
+            } else if (targetTabId === 'dashboard') {
                 // Initialize dashboard map if needed and invalidate size
                 if (typeof initializeDashboardMap === 'function') {
                     initializeDashboardMap();
@@ -2025,7 +1714,7 @@ function initTabs() {
                 if (typeof dashboardMap !== 'undefined' && dashboardMap) {
                     invalidateMapSize(dashboardMap);
                 }
-            } else if (targetTab === 'atlas-ai') {
+            } else if (targetTabId === 'atlas-ai') {
                 // Initialize Atlas AI bubble with typewriter effect when tab is shown
                 if (typeof initAtlasBubble === 'function') {
                     // Reset bubble text first
@@ -2038,18 +1727,11 @@ function initTabs() {
                         initAtlasBubble();
                     }, 100);
                 }
-            } else if (targetTab === 'my-edits') {
-                // Initialize map if not already done
-                if (!myEditsMap) {
-                    initMyEditsMap();
-                }
-                // Load data
-                loadMyEdits();
-                // Invalidate map size to ensure proper display
-                invalidateMapSize(myEditsMap);
             }
         });
     });
+    
+    console.log('Tabs initialized successfully');
 }
 
 
@@ -2167,97 +1849,6 @@ async function visualizeChangeset(changesetId) {
         if (visualizationLayer) {
             map.removeLayer(visualizationLayer);
             visualizationLayer = null;
-        }
-    }
-}
-
-// Visualize changeset on My Edits map
-async function visualizeChangesetOnMyEditsMap(changesetId) {
-    if (!myEditsMap) {
-        alert('My Edits map not initialized');
-        return;
-    }
-    
-    try {
-        // Clear previous visualization
-        if (myEditsVisualizationLayer) {
-            myEditsMap.removeLayer(myEditsVisualizationLayer);
-        }
-        
-        // Create a new layer group for visualization
-        myEditsVisualizationLayer = L.layerGroup().addTo(myEditsMap);
-        
-        // Show loading indicator
-        const loadingMsg = L.popup()
-            .setLatLng(myEditsMap.getCenter())
-            .setContent('<div style="text-align: center;"><strong>🤖 Atlas Intelligence</strong><br/>Loading changeset data...</div>')
-            .openOn(myEditsMap);
-        
-        // Fetch changeset data from OSM API
-        const response = await fetch(`https://api.openstreetmap.org/api/0.6/changeset/${changesetId}/download`);
-        if (!response.ok) {
-            throw new Error(`Failed to fetch changeset: ${response.statusText}`);
-        }
-        
-        const xmlText = await response.text();
-        const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
-        
-        // Close loading message
-        myEditsMap.closePopup();
-        
-        // Parse and visualize the data
-        const stats = parseAndVisualizeChangeset(xmlDoc, myEditsVisualizationLayer, myEditsMap);
-        
-        // Show summary popup
-        const summaryContent = `
-            <div style="text-align: center; min-width: 200px;">
-                <h3 style="margin: 0 0 10px 0; color: #3b82f6; font-size: 1rem;">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 5px;">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <path d="M2 12h20"></path>
-                        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-                    </svg>
-                    Atlas Intelligence
-                </h3>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; font-size: 0.85rem;">
-                    <div style="background: #dcfce7; padding: 8px; border-radius: 6px;">
-                        <div style="font-weight: 700; color: #16a34a;">${stats.created.nodes + stats.created.ways}</div>
-                        <div style="font-size: 0.75rem; color: #15803d;">Created</div>
-                    </div>
-                    <div style="background: #fef3c7; padding: 8px; border-radius: 6px;">
-                        <div style="font-weight: 700; color: #d97706;">${stats.modified.nodes + stats.modified.ways}</div>
-                        <div style="font-size: 0.75rem; color: #b45309;">Modified</div>
-                    </div>
-                    <div style="background: #fee2e2; padding: 8px; border-radius: 6px; grid-column: span 2;">
-                        <div style="font-weight: 700; color: #dc2626;">${stats.deleted.nodes + stats.deleted.ways}</div>
-                        <div style="font-size: 0.75rem; color: #b91c1c;">Deleted</div>
-                    </div>
-                </div>
-                <div style="font-size: 0.75rem; color: #666; margin-top: 8px;">
-                    🟢 Green: Created | 🟡 Yellow: Modified | 🔴 Red: Deleted
-                </div>
-            </div>
-        `;
-        
-        L.popup()
-            .setLatLng(stats.center || myEditsMap.getCenter())
-            .setContent(summaryContent)
-            .openOn(myEditsMap);
-        
-        // Fit map to visualization bounds if available
-        if (stats.bounds && stats.bounds.isValid()) {
-            myEditsMap.fitBounds(stats.bounds, { padding: [50, 50] });
-        }
-        
-    } catch (error) {
-        console.error('Error visualizing changeset:', error);
-        alert(`Failed to visualize changeset: ${error.message}`);
-        
-        // Clean up
-        if (myEditsVisualizationLayer) {
-            myEditsMap.removeLayer(myEditsVisualizationLayer);
-            myEditsVisualizationLayer = null;
         }
     }
 }
@@ -2532,7 +2123,7 @@ function displayUserProfile(user, stats) {
             const validationStatus = cs.validation ? cs.validation.status : 'valid';
             const validationClass = validationStatus === 'valid' ? 'badge-valid' : 
                                    'badge-needs-review';
-                                const validationText = validationStatus === 'valid' ? '✓ Valid' : '🔍 Needs Review';
+                                const validationText = validationStatus === 'valid' ? 'Valid' : 'Needs Review';
             
             csItem.innerHTML = `
                 <div class="profile-changeset-header">
@@ -2695,7 +2286,7 @@ async function showChangesetComparison(changesetId) {
         // Show user-friendly error message
         let errorMessage = 'Failed to load changeset comparison: ' + error.message;
         if (error.message.includes('timeout') || error.message.includes('Timeout')) {
-            errorMessage = '⏱️ This changeset is very large and processing timed out. ' +
+            errorMessage = 'This changeset is very large and processing timed out. ' +
                           'The comparison tool is working on improving support for large changesets. ' +
                           'Please try again in a moment or contact support if the issue persists.';
         }
@@ -2725,7 +2316,7 @@ function showLargeChangesetWarning(metadata) {
         font-size: 14px;
     `;
     
-    let warningText = '<strong>⚠️ Large Changeset Detected</strong><br>';
+    let warningText = '<strong>WARNING: Large Changeset Detected</strong><br>';
     
     if (metadata.total_modified > 500) {
         warningText += `<p style="margin: 8px 0 0 0;">Showing old version data for ${metadata.modified_with_old_data} of ${metadata.total_modified} modified elements ` +

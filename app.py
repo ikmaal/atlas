@@ -1,6 +1,5 @@
-from flask import Flask, jsonify, render_template, session, redirect, request, url_for, send_from_directory
+from flask import Flask, jsonify, render_template, request, url_for, send_from_directory
 from flask_cors import CORS
-from flask_session import Session
 from flask_caching import Cache
 import requests
 import xml.etree.ElementTree as ET
@@ -27,40 +26,6 @@ from shapely.geometry import Point, Polygon, MultiPolygon
 app = Flask(__name__)
 CORS(app)
 
-# Session configuration
-# Use a persistent SECRET_KEY - critical for session persistence across server restarts
-# In production, always set SECRET_KEY environment variable
-SECRET_KEY_FILE = '.secret_key'
-if os.environ.get('SECRET_KEY'):
-    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
-else:
-    # Try to load from file, or create and save a new one
-    if os.path.exists(SECRET_KEY_FILE):
-        with open(SECRET_KEY_FILE, 'r') as f:
-            app.config['SECRET_KEY'] = f.read().strip()
-        print("🔑 Loaded SECRET_KEY from file")
-    else:
-        new_key = secrets.token_hex(32)
-        with open(SECRET_KEY_FILE, 'w') as f:
-            f.write(new_key)
-        app.config['SECRET_KEY'] = new_key
-        print("🔑 Generated and saved new SECRET_KEY")
-app.config['SESSION_TYPE'] = 'filesystem'
-app.config['SESSION_FILE_DIR'] = './flask_session'
-app.config['SESSION_PERMANENT'] = False
-app.config['SESSION_USE_SIGNER'] = True
-app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SESSION_COOKIE_SECURE', 'False') == 'True'
-app.config['SESSION_COOKIE_PATH'] = '/'
-app.config['SESSION_FILE_THRESHOLD'] = 500
-
-# Ensure flask_session directory exists
-if not os.path.exists('./flask_session'):
-    os.makedirs('./flask_session')
-    print("📁 Created flask_session directory")
-
-Session(app)
 
 # Cache configuration for performance optimization
 app.config['CACHE_TYPE'] = 'FileSystemCache'
@@ -71,78 +36,13 @@ app.config['CACHE_THRESHOLD'] = 500  # Maximum number of cache items
 # Ensure cache directory exists
 if not os.path.exists('./cache'):
     os.makedirs('./cache')
-    print("💾 Created cache directory")
+    print("Created cache directory")
 
 # Initialize cache
 cache = Cache(app)
-print("💾 Cache initialized successfully")
+print("Cache initialized successfully")
 
-# OSM OAuth Configuration
-# IMPORTANT: You need to register your app at https://www.openstreetmap.org/oauth2/applications
-# Set these as environment variables or update them here
-OSM_CLIENT_ID = os.environ.get('OSM_CLIENT_ID', 'YOUR_CLIENT_ID_HERE')
-OSM_CLIENT_SECRET = os.environ.get('OSM_CLIENT_SECRET', 'YOUR_CLIENT_SECRET_HERE')
-OSM_REDIRECT_URI = os.environ.get('OSM_REDIRECT_URI', 'http://localhost:5000/oauth/callback')
-OSM_OAUTH_URL = 'https://www.openstreetmap.org/oauth2/authorize'
-OSM_TOKEN_URL = 'https://www.openstreetmap.org/oauth2/token'
 OSM_API_URL = 'https://api.openstreetmap.org/api/0.6'
-
-# OAuth state storage (server-side with file persistence)
-# Store states with timestamps to prevent session cookie issues during OAuth redirects
-OAUTH_STATES_FILE = '.oauth_states.json'
-
-def load_oauth_states():
-    """Load OAuth states from file"""
-    if os.path.exists(OAUTH_STATES_FILE):
-        try:
-            with open(OAUTH_STATES_FILE, 'r') as f:
-                data = json.load(f)
-                # Convert ISO timestamp strings back to datetime objects
-                return {state: datetime.fromisoformat(timestamp) 
-                       for state, timestamp in data.items()}
-        except Exception as e:
-            print(f"⚠️  Could not load OAuth states: {e}")
-            return {}
-    return {}
-
-def save_oauth_states(states):
-    """Save OAuth states to file"""
-    try:
-        # Convert datetime objects to ISO format strings for JSON serialization
-        data = {state: timestamp.isoformat() 
-               for state, timestamp in states.items()}
-        with open(OAUTH_STATES_FILE, 'w') as f:
-            json.dump(data, f)
-    except Exception as e:
-        print(f"⚠️  Could not save OAuth states: {e}")
-
-# Initialize OAuth states from file
-oauth_states = load_oauth_states()
-print(f"🔐 Loaded {len(oauth_states)} OAuth states from storage")
-
-def cleanup_expired_states():
-    """Remove OAuth states older than 10 minutes"""
-    current_time = datetime.now(timezone.utc)
-    expired = [state for state, timestamp in oauth_states.items() 
-               if (current_time - timestamp).total_seconds() > 600]
-    for state in expired:
-        del oauth_states[state]
-    if expired:
-        print(f"🧹 Cleaned up {len(expired)} expired OAuth states")
-        save_oauth_states(oauth_states)  # Persist after cleanup
-
-# Clean up any expired states on startup
-cleanup_expired_states()
-
-# Debug: Print OAuth config on startup
-print(f"🔧 OAuth Configuration:")
-print(f"   Client ID: {OSM_CLIENT_ID[:20] if OSM_CLIENT_ID != 'YOUR_CLIENT_ID_HERE' else '❌ NOT SET'}...")
-print(f"   Client Secret: {'✓ Set' if OSM_CLIENT_SECRET != 'YOUR_CLIENT_SECRET_HERE' else '❌ NOT SET'}")
-print(f"   Redirect URI: {OSM_REDIRECT_URI}")
-print(f"")
-print(f"⚠️  IMPORTANT: Access your app at {OSM_REDIRECT_URI.rsplit('/oauth/callback', 1)[0]}")
-print(f"   (Don't use 127.0.0.1 if your redirect URI uses localhost, or vice versa)")
-print(f"")
 
 # ============================================
 # Multi-Region Configuration
@@ -178,26 +78,26 @@ def load_regions_config():
                         
                         if polygons:
                             REGION_POLYGONS[region_id] = MultiPolygon(polygons)
-                            print(f"🗺️  {region_data['name']} MultiPolygon initialized with {len(polygons)} polygons")
+                            print(f"{region_data['name']} MultiPolygon initialized with {len(polygons)} polygons")
                         else:
                             REGION_POLYGONS[region_id] = None
-                            print(f"⚠️  {region_data['name']} has no valid polygon coordinates")
+                            print(f"WARNING: {region_data['name']} has no valid polygon coordinates")
                     else:
                         # Single polygon
                         if len(polygon_coords) >= 3:
                             coords = [tuple(coord) for coord in polygon_coords]
                             REGION_POLYGONS[region_id] = Polygon(coords)
-                            print(f"🗺️  {region_data['name']} polygon initialized with {len(coords)} vertices")
+                            print(f"{region_data['name']} polygon initialized with {len(coords)} vertices")
                         else:
                             REGION_POLYGONS[region_id] = None
-                            print(f"⚠️  {region_data['name']} has no valid polygon coordinates")
+                            print(f"WARNING: {region_data['name']} has no valid polygon coordinates")
                 else:
                     REGION_POLYGONS[region_id] = None
-                    print(f"⚠️  {region_data['name']} has no polygon coordinates")
+                    print(f"WARNING: {region_data['name']} has no polygon coordinates")
             
             return config.get('defaultRegion', 'singapore')
     except Exception as e:
-        print(f"⚠️  Could not load regions config: {e}")
+        print(f"WARNING: Could not load regions config: {e}")
         return 'singapore'
 
 # Initialize regions on startup
@@ -254,7 +154,7 @@ def load_alerted_changesets():
                 data = json.load(f)
                 return set(data.get('changesets', []))
         except Exception as e:
-            print(f"⚠️ Error loading alerted changesets: {e}")
+            print(f"WARNING: Error loading alerted changesets: {e}")
             return set()
     return set()
 
@@ -264,20 +164,20 @@ def save_alerted_changesets(changesets_set):
         with open(ALERTED_CHANGESETS_FILE, 'w') as f:
             json.dump({'changesets': list(changesets_set)}, f)
     except Exception as e:
-        print(f"⚠️ Error saving alerted changesets: {e}")
+        print(f"WARNING: Error saving alerted changesets: {e}")
 
 # Load previously alerted changesets on startup
 alerted_changesets = load_alerted_changesets()
 if alerted_changesets:
-    print(f"📋 Loaded {len(alerted_changesets)} previously alerted changesets")
+    print(f"Loaded {len(alerted_changesets)} previously alerted changesets")
 
 def send_slack_notification(changeset):
     """Send Slack notification for needs_review changesets"""
     if not SLACK_WEBHOOK_URL or not SLACK_ALERTS_ENABLED:
         if not SLACK_WEBHOOK_URL:
-            print("⚠️ Slack webhook URL not configured")
+            print("WARNING: Slack webhook URL not configured")
         if not SLACK_ALERTS_ENABLED:
-            print("⚠️ Slack alerts not enabled")
+            print("WARNING: Slack alerts not enabled")
         return False
     
     cs_id = changeset.get('id')
@@ -289,7 +189,7 @@ def send_slack_notification(changeset):
     
     # Check if already alerted (avoid duplicates)
     if cs_id_str in alerted_changesets:
-        print(f"⏭️ Skipping changeset {cs_id_str} - already notified")
+        print(f"Skipping changeset {cs_id_str} - already notified")
         return False
     
     try:
@@ -303,7 +203,7 @@ def send_slack_notification(changeset):
         # Mark as alerted and save to file (use string for consistency)
         alerted_changesets.add(cs_id_str)
         save_alerted_changesets(alerted_changesets)
-        print(f"📝 Marked changeset {cs_id_str} as alerted")
+        print(f"Marked changeset {cs_id_str} as alerted")
         
         # Prepare changeset data
         user = changeset.get('user', 'Unknown')
@@ -331,13 +231,13 @@ def send_slack_notification(changeset):
         
         # Determine header text based on changeset type
         if is_mass_deletion:
-            header_text = "⚠️ Mass Deletion Changeset Detected"
+            header_text = "Mass Deletion Changeset Detected"
             status_text = "Mass Deletion Detected"
         elif is_erp:
             header_text = "ERP Changeset Detected"
             status_text = "ERP Detected"
         else:
-            header_text = "🔍 Changeset Needs Review"
+            header_text = "Changeset Needs Review"
             status_text = "Needs Review"
         
         # Determine warning_flags message based on changeset type
@@ -451,7 +351,7 @@ def send_slack_notification(changeset):
                         "type": "button",
                         "text": {
                             "type": "plain_text",
-                            "text": "🗺️ View on OSM",
+                            "text": "View on OSM",
                             "emoji": True
                         },
                         "url": osm_link,
@@ -461,7 +361,7 @@ def send_slack_notification(changeset):
                         "type": "button",
                         "text": {
                             "type": "plain_text",
-                            "text": "🔍 View on OSMCha",
+                            "text": "View on OSMCha",
                             "emoji": True
                         },
                         "url": osmcha_link
@@ -488,10 +388,10 @@ def send_slack_notification(changeset):
             )
             
             if response.status_code == 200:
-                print(f"✅ Slack notification sent successfully for changeset #{cs_id_str}")
+                print(f"SUCCESS: Slack notification sent successfully for changeset #{cs_id_str}")
                 return True
             else:
-                print(f"❌ Failed to send Slack notification: HTTP {response.status_code}")
+                print(f"ERROR: Failed to send Slack notification: HTTP {response.status_code}")
                 print(f"   Response: {response.text[:200]}")
                 # Remove from alerted set if failed so it can be retried
                 alerted_changesets.discard(cs_id_str)
@@ -499,7 +399,7 @@ def send_slack_notification(changeset):
                 return False
                 
         except requests.exceptions.ConnectionError as e:
-            print(f"❌ Connection Error: Unable to connect to Slack webhook")
+            print(f"ERROR: Connection Error: Unable to connect to Slack webhook")
             print(f"   Webhook URL: {SLACK_WEBHOOK_URL[:50]}...")
             print(f"   Error details: {str(e)}")
             print(f"   Possible causes:")
@@ -512,7 +412,7 @@ def send_slack_notification(changeset):
             return False
             
         except requests.exceptions.Timeout as e:
-            print(f"❌ Timeout Error: Request to Slack timed out after 10 seconds")
+            print(f"ERROR: Timeout Error: Request to Slack timed out after 10 seconds")
             print(f"   Changeset ID: {cs_id_str}")
             print(f"   Error details: {str(e)}")
             alerted_changesets.discard(cs_id_str)
@@ -520,7 +420,7 @@ def send_slack_notification(changeset):
             return False
             
         except requests.exceptions.SSLError as e:
-            print(f"❌ SSL Error: SSL certificate verification failed")
+            print(f"ERROR: SSL Error: SSL certificate verification failed")
             print(f"   Changeset ID: {cs_id_str}")
             print(f"   Error details: {str(e)}")
             print(f"   This might indicate a network/proxy issue")
@@ -529,7 +429,7 @@ def send_slack_notification(changeset):
             return False
             
         except requests.exceptions.RequestException as e:
-            print(f"❌ Request Error: {type(e).__name__}")
+            print(f"ERROR: Request Error: {type(e).__name__}")
             print(f"   Changeset ID: {cs_id_str}")
             print(f"   Error details: {str(e)}")
             alerted_changesets.discard(cs_id_str)
@@ -537,7 +437,7 @@ def send_slack_notification(changeset):
             return False
             
     except Exception as e:
-        print(f"❌ Unexpected error sending Slack notification: {type(e).__name__}")
+        print(f"ERROR: Unexpected error sending Slack notification: {type(e).__name__}")
         print(f"   Changeset ID: {cs_id_str if 'cs_id_str' in locals() else 'unknown'}")
         print(f"   Error: {str(e)}")
         import traceback
@@ -576,12 +476,12 @@ def get_sheets_client():
         elif os.path.exists('google_credentials.json'):
             creds = Credentials.from_service_account_file('google_credentials.json', scopes=scopes)
         else:
-            print("❌ No Google credentials found")
+            print("ERROR: No Google credentials found")
             return None
             
         return gspread.authorize(creds)
     except Exception as e:
-        print(f"❌ Google Sheets Error: {e}")
+        print(f"ERROR: Google Sheets Error: {e}")
         import traceback
         traceback.print_exc()
         return None
@@ -589,7 +489,7 @@ def get_sheets_client():
 def log_changeset_needing_review(changeset_data, flags, analysis_text):
     """Log changeset needing review to Google Sheets"""
     if not GOOGLE_SHEETS_ENABLED:
-        print("⚠️ Google Sheets not enabled - credentials not found")
+        print("WARNING: Google Sheets not enabled - credentials not found")
         return
     
     try:
@@ -601,7 +501,7 @@ def log_changeset_needing_review(changeset_data, flags, analysis_text):
         try:
             sheet = client.open('OSM Changesets Needing Review').sheet1
         except gspread.exceptions.SpreadsheetNotFound:
-            print("❌ Spreadsheet 'OSM Changesets Needing Review' not found. Please create it and share with service account.")
+            print("ERROR: Spreadsheet 'OSM Changesets Needing Review' not found. Please create it and share with service account.")
             return
         
         # Prepare row data
@@ -692,33 +592,33 @@ def log_changeset_needing_review(changeset_data, flags, analysis_text):
             
             # Skip if this changeset is already logged (check from row 2 onwards, skip header)
             if str(changeset_id) in changeset_ids[1:]:  # Skip header row
-                print(f"ℹ️ Changeset #{changeset_id} already logged to Google Sheets, skipping duplicate")
+                print(f"INFO: Changeset #{changeset_id} already logged to Google Sheets, skipping duplicate")
                 return
         except Exception as e:
-            print(f"⚠️ Could not check for duplicates: {e}, proceeding with insert")
+            print(f"WARNING: Could not check for duplicates: {e}, proceeding with insert")
         
         # Insert the changeset needing review at row 2 (top, after headers)
         sheet.insert_row(row, 2)
-        print(f"✅ Logged changeset #{changeset_id} needing review to Google Sheets (at top)")
+        print(f"SUCCESS: Logged changeset #{changeset_id} needing review to Google Sheets (at top)")
         
     except Exception as e:
-        print(f"❌ Error logging to Google Sheets: {e}")
+        print(f"ERROR: Error logging to Google Sheets: {e}")
 
 # Print Google Sheets status on startup
 if GOOGLE_SHEETS_ENABLED:
-    print("📊 Google Sheets: ✅ ENABLED")
+    print("Google Sheets: ENABLED")
 else:
-    print("📊 Google Sheets: ⚠️ DISABLED (google_credentials.json not found)")
+    print("Google Sheets: DISABLED (google_credentials.json not found)")
 
 # Print Slack notifications status on startup
 if SLACK_ALERTS_ENABLED and SLACK_WEBHOOK_URL:
-    print("📢 Slack Notifications: ✅ ENABLED")
+    print("Slack Notifications: ENABLED")
     print(f"   Webhook URL configured: {SLACK_WEBHOOK_URL[:30]}...")
 elif SLACK_ALERTS_ENABLED and not SLACK_WEBHOOK_URL:
-    print("📢 Slack Notifications: ⚠️ ENABLED but no webhook URL configured")
+    print("Slack Notifications: ENABLED but no webhook URL configured")
     print("   Set SLACK_WEBHOOK_URL environment variable to enable")
 else:
-    print("📢 Slack Notifications: ⚠️ DISABLED (set SLACK_ALERTS_ENABLED=true to enable)")
+    print("Slack Notifications: DISABLED (set SLACK_ALERTS_ENABLED=true to enable)")
 
 @app.route('/api/cache/clear')
 def clear_cache():
@@ -755,7 +655,7 @@ def test_slack_notification():
     # Test basic connectivity first
     try:
         test_response = requests.get('https://hooks.slack.com', timeout=5)
-        print(f"✅ Can reach Slack servers (status: {test_response.status_code})")
+        print(f"SUCCESS: Can reach Slack servers (status: {test_response.status_code})")
     except requests.exceptions.ConnectionError:
         return jsonify({
             'success': False,
@@ -768,7 +668,7 @@ def test_slack_notification():
             ]
         }), 500
     except Exception as e:
-        print(f"⚠️ Connectivity test warning: {e}")
+        print(f"WARNING: Connectivity test warning: {e}")
     
     # Create a test changeset with needs_review status
     test_changeset = {
@@ -807,17 +707,6 @@ def test_slack_notification():
             'success': False,
             'error': 'Failed to send test notification. Check server logs for details.'
         }), 500
-
-UPLOAD_FOLDER = 'static/uploads'
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
-
-# Ensure upload folder exists
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # Validation thresholds for changesets needing review
 VALIDATION_THRESHOLDS = {
@@ -1075,13 +964,13 @@ def fetch_osm_changesets(bbox=None, limit=200, region=None):
         # as the end time for the next batch (pagination backwards in time)
         max_requests = (limit + 99) // 100  # Max requests needed to reach desired limit
         
-        print(f"📊 Fetching up to {limit} changesets from last {CHANGESET_TIME_RANGE_HOURS} hours (max {max_requests} API calls)...")
+        print(f"Fetching up to {limit} changesets from last {CHANGESET_TIME_RANGE_HOURS} hours (max {max_requests} API calls)...")
         
         for request_num in range(max_requests):
             # Stop if we already have enough changesets that pass the region filter
             region_count = sum(1 for cs in all_changesets if is_changeset_in_region(cs, region))
             if region_count >= limit:
-                print(f"  ℹ️  Already have {region_count} {region_name} changesets, stopping early")
+                print(f"  INFO: Already have {region_count} {region_name} changesets, stopping early")
                 break
         
             params = {
@@ -1179,14 +1068,14 @@ def fetch_osm_changesets(bbox=None, limit=200, region=None):
         changesets = changesets[:limit]
         
         # Debug: Log some changeset info
-        print(f"📈 Total: {total_fetched} fetched, {filtered_count} in {region_name}, {len(changesets)} after limit ({fetch_time:.1f}s)")
+        print(f"Total: {total_fetched} fetched, {filtered_count} in {region_name}, {len(changesets)} after limit ({fetch_time:.1f}s)")
         if changesets:
             oldest = changesets[-1]['created_at'][:10] if len(changesets) > 0 else 'N/A'
             newest = changesets[0]['created_at'][:10] if len(changesets) > 0 else 'N/A'
             print(f"   Date range: {newest} to {oldest}")
         
         # Fetch detailed statistics for each changeset in parallel with reduced workers to avoid rate limiting
-        print(f"🔍 Fetching detailed statistics for {len(changesets)} changesets...")
+        print(f"Fetching detailed statistics for {len(changesets)} changesets...")
         details_start = time.time()
         
         with ThreadPoolExecutor(max_workers=5) as executor:
@@ -1215,10 +1104,10 @@ def fetch_osm_changesets(bbox=None, limit=200, region=None):
                 except Exception as e:
                     errors += 1
                     if errors <= 3:  # Show first 3 errors
-                        print(f"   ⚠️  Error for changeset {cs['id']}: {str(e)[:50]}")
+                        print(f"   WARNING: Error for changeset {cs['id']}: {str(e)[:50]}")
             
             if errors > 0:
-                print(f"   ⚠️  {errors} changesets failed to fetch details")
+                print(f"   WARNING: {errors} changesets failed to fetch details")
         
         details_time = time.time() - details_start
         print(f"   Detailed statistics fetched in {details_time:.1f}s")
@@ -1229,7 +1118,7 @@ def fetch_osm_changesets(bbox=None, limit=200, region=None):
             if sample.get('details'):
                 print(f"   Sample details for changeset {sample['id']}: created={sample['details'].get('total_created', 'N/A')}, modified={sample['details'].get('total_modified', 'N/A')}, deleted={sample['details'].get('total_deleted', 'N/A')}")
             else:
-                print(f"   ⚠️  Sample changeset {sample['id']} has no details!")
+                print(f"   WARNING: Sample changeset {sample['id']} has no details!")
         
         # Validate all changesets and add tags
         for cs in changesets:
@@ -1248,23 +1137,23 @@ def fetch_osm_changesets(bbox=None, limit=200, region=None):
                     # Add mass_deletion tag
                     cs['tags']['mass_deletion'] = 'yes'
                     cs['tags']['deleted_count'] = str(total_deleted)
-                    print(f"🏷️ Added mass_deletion tag to changeset {cs.get('id')} ({total_deleted} deletions)")
+                    print(f"Added mass_deletion tag to changeset {cs.get('id')} ({total_deleted} deletions)")
                 elif total_deleted > 0:
                     # Debug: log if needs_review but less than 50 deletions (shouldn't happen)
-                    print(f"⚠️ Changeset {cs.get('id')} marked needs_review but only has {total_deleted} deletions")
+                    print(f"WARNING: Changeset {cs.get('id')} marked needs_review but only has {total_deleted} deletions")
         
         # Check if this is the initial load (no previously alerted changesets)
         initial_load = len(alerted_changesets) == 0
         
         if initial_load:
             # First time loading - mark all existing changesets as seen WITHOUT sending notifications
-            print(f"📋 Initial load: Marking {len(changesets)} existing changesets as seen (no notifications will be sent)")
+            print(f"Initial load: Marking {len(changesets)} existing changesets as seen (no notifications will be sent)")
             for cs in changesets:
                 cs_id = cs.get('id')
                 if cs_id:
                     alerted_changesets.add(str(cs_id))
             save_alerted_changesets(alerted_changesets)
-            print(f"✅ Marked {len(alerted_changesets)} changesets as seen. Future NEW changesets will trigger notifications.")
+            print(f"SUCCESS: Marked {len(alerted_changesets)} changesets as seen. Future NEW changesets will trigger notifications.")
         else:
             # Subsequent loads - only notify for NEW needs_review changesets that haven't been seen before
             new_count = 0
@@ -1281,14 +1170,14 @@ def fetch_osm_changesets(bbox=None, limit=200, region=None):
                         if result:
                             new_count += 1
                         else:
-                            print(f"⚠️ Failed to send notification for changeset {cs_id_str}")
+                            print(f"WARNING: Failed to send notification for changeset {cs_id_str}")
                     else:
                         skipped_count += 1
             
             if new_count > 0:
-                print(f"📢 Sent notifications for {new_count} new needs_review changeset(s)")
+                print(f"Sent notifications for {new_count} new needs_review changeset(s)")
             if skipped_count > 0:
-                print(f"⏭️ Skipped {skipped_count} already-notified or non-needs_review changeset(s)")
+                print(f"Skipped {skipped_count} already-notified or non-needs_review changeset(s)")
             
             # Also log to Google Sheets if validation status is 'needs_review' and Google Sheets enabled
             if cs['validation'].get('status') == 'needs_review' and GOOGLE_SHEETS_ENABLED:
@@ -1311,11 +1200,11 @@ def fetch_osm_changesets(bbox=None, limit=200, region=None):
                 log_changeset_needing_review(log_data, validation_flags, 'Auto-detected during fetch')
         
         total_time = time.time() - start_time_overall
-        print(f"✅ Loaded {len(changesets)} changesets successfully in {total_time:.1f}s")
+        print(f"SUCCESS: Loaded {len(changesets)} changesets successfully in {total_time:.1f}s")
         return changesets
     
     except Exception as e:
-        print(f"❌ Error fetching changesets: {e}")
+        print(f"ERROR: Error fetching changesets: {e}")
         return []
 
 def get_statistics(changesets):
@@ -1461,7 +1350,7 @@ def get_changeset_comparison(changeset_id):
     CACHED: Results cached for 1 hour for performance
     """
     try:
-        print(f"🔍 Fetching comparison for changeset #{changeset_id}...")
+        print(f"Fetching comparison for changeset #{changeset_id}...")
         # Fetch changeset details from OSM API
         url = f"https://api.openstreetmap.org/api/0.6/changeset/{changeset_id}/download"
         headers = {'User-Agent': 'ATLAS-Singapore/1.0'}
@@ -1606,19 +1495,19 @@ def get_changeset_comparison(changeset_id):
                                 errors += 1
                                 total_errors += 1
                                 if errors <= 5:  # Only log first few errors per chunk
-                                    print(f"    ⚠️  Error fetching {item['type']} #{item['id']}: {str(e)[:50]}")
+                                    print(f"    WARNING: Error fetching {item['type']} #{item['id']}: {str(e)[:50]}")
                     except TimeoutError:
-                        print(f"    ⚠️  Chunk timeout after {completed}/{len(future_to_item)} completed")
+                        print(f"    WARNING: Chunk timeout after {completed}/{len(future_to_item)} completed")
                         total_errors += (len(future_to_item) - completed)
                     
-                    print(f"    📊 Chunk {chunk_idx + 1}: {completed - errors} successful, {errors} failed")
+                    print(f"    Chunk {chunk_idx + 1}: {completed - errors} successful, {errors} failed")
                     
                     # Small delay between chunks to avoid rate limiting
                     if chunk_idx < total_chunks - 1:
                         time.sleep(0.5)
             
             if total_errors > 0:
-                print(f"  ⚠️  Total errors across all chunks: {total_errors}")
+                print(f"  WARNING: Total errors across all chunks: {total_errors}")
         
         comparison_data['modified'] = modified_items
         
@@ -1680,17 +1569,17 @@ def get_changeset_comparison(changeset_id):
                                     if errors <= 5:
                                         print(f"    ✗ [{completed}/{len(future_to_item)}] {item['type']} #{item['id']}: {str(e)[:50]}")
                         except TimeoutError:
-                            print(f"    ⚠️  Chunk timeout after {completed}/{len(future_to_item)} completed")
+                            print(f"    WARNING: Chunk timeout after {completed}/{len(future_to_item)} completed")
                             total_deleted_errors += (len(future_to_item) - completed)
                         
-                        print(f"    📊 Deleted chunk {chunk_idx + 1}: {completed - errors} successful, {errors} failed")
+                        print(f"    Deleted chunk {chunk_idx + 1}: {completed - errors} successful, {errors} failed")
                         
                         # Delay between chunks
                         if chunk_idx < total_chunks - 1:
                             time.sleep(0.5)
                 
                 if total_deleted_errors > 0:
-                    print(f"  ⚠️  Total deleted element errors: {total_deleted_errors}")
+                    print(f"  WARNING: Total deleted element errors: {total_deleted_errors}")
         
         comparison_data['deleted'] = deleted_items
         
@@ -1703,9 +1592,9 @@ def get_changeset_comparison(changeset_id):
             'is_large_changeset': total_modified > MAX_ELEMENTS_TO_FETCH or len(deleted_items) > 200
         }
         
-        print(f"✅ Comparison complete: {len(comparison_data['created'])} created, {len(comparison_data['modified'])} modified, {len(comparison_data['deleted'])} deleted")
+        print(f"SUCCESS: Comparison complete: {len(comparison_data['created'])} created, {len(comparison_data['modified'])} modified, {len(comparison_data['deleted'])} deleted")
         if comparison_data['metadata']['is_large_changeset']:
-            print(f"   📊 Large changeset: {comparison_data['metadata']['modified_with_old_data']}/{comparison_data['metadata']['total_modified']} modified with old data, {comparison_data['metadata']['deleted_with_geometry']}/{comparison_data['metadata']['total_deleted']} deleted with geometry")
+            print(f"   Large changeset: {comparison_data['metadata']['modified_with_old_data']}/{comparison_data['metadata']['total_modified']} modified with old data, {comparison_data['metadata']['deleted_with_geometry']}/{comparison_data['metadata']['total_deleted']} deleted with geometry")
         
         return jsonify({
             'success': True,
@@ -1714,7 +1603,7 @@ def get_changeset_comparison(changeset_id):
         })
         
     except requests.exceptions.Timeout:
-        print(f"⏱️  Timeout fetching changeset #{changeset_id}")
+        print(f"TIMEOUT: Timeout fetching changeset #{changeset_id}")
         return jsonify({
             'success': False,
             'error': 'Request timeout - changeset is too large. Try again or contact support.',
@@ -1820,20 +1709,20 @@ def generate_comparison_analysis(changeset_id, comparison_data):
     top_tags = sorted(common_tags.items(), key=lambda x: x[1], reverse=True)[:5]
     
     # Build detailed analysis text
-    analysis = f"""## 📊 Changeset Analysis: #{changeset_id}
+    analysis = f"""## Changeset Analysis: #{changeset_id}
 
 ### Overview
 
 This changeset contains **{total_changes} total changes**:
-- 🟢 **{len(created)} elements created**
-- 🟡 **{len(modified)} elements modified**
-- 🔴 **{len(deleted)} elements deleted**
+- **{len(created)} elements created**
+- **{len(modified)} elements modified**
+- **{len(deleted)} elements deleted**
 
 """
     
     # Element type breakdown
     if any(element_types.values()):
-        analysis += "### 📋 Element Type Breakdown\n\n"
+        analysis += "### Element Type Breakdown\n\n"
         for elem_type, count in element_types.items():
             if count > 0:
                 analysis += f"- **{elem_type.capitalize()}s**: {count}\n"
@@ -1841,7 +1730,7 @@ This changeset contains **{total_changes} total changes**:
     
     # Created elements analysis
     if created:
-        analysis += f"### 🟢 Created Elements Analysis\n\n"
+        analysis += f"### Created Elements Analysis\n\n"
         if top_tags:
             analysis += "**Most common tags in new elements:**\n"
             for tag, count in top_tags:
@@ -1863,7 +1752,7 @@ This changeset contains **{total_changes} total changes**:
     
     # Modified elements analysis
     if modified:
-        analysis += f"### 🟡 Modified Elements Analysis\n\n"
+        analysis += f"### Modified Elements Analysis\n\n"
         analysis += f"**{len(modified)} elements were modified** with tag changes.\n\n"
         
         if modified_tag_changes:
@@ -1885,7 +1774,7 @@ This changeset contains **{total_changes} total changes**:
     
     # Deleted elements analysis
     if deleted:
-        analysis += f"### 🔴 Deleted Elements Analysis\n\n"
+        analysis += f"### Deleted Elements Analysis\n\n"
         analysis += f"**{len(deleted)} elements were deleted**.\n\n"
         
         if deleted_types:
@@ -1905,38 +1794,38 @@ This changeset contains **{total_changes} total changes**:
                 important_deletions.append(f"Building: {building_name}")
         
         if important_deletions:
-            analysis += "⚠️ **Important deletions detected:**\n"
+            analysis += "**Important deletions detected:**\n"
             for deletion in important_deletions[:5]:
                 analysis += f"- {deletion}\n"
             analysis += "\n"
     
     # Quality assessment
-    analysis += "### ✅ Quality Assessment\n\n"
+    analysis += "### Quality Assessment\n\n"
     
     # Check for missing tags
     missing_name = sum(1 for e in created if not e.get('tags', {}).get('name'))
     missing_addr = sum(1 for e in created if e.get('tags', {}).get('building') and not any(k.startswith('addr:') for k in e.get('tags', {}).keys()))
     
     if missing_name == 0 and missing_addr == 0:
-        analysis += "✅ **Excellent tagging** - All created elements have proper names and addresses where applicable\n\n"
+        analysis += "**Excellent tagging** - All created elements have proper names and addresses where applicable\n\n"
     else:
         if missing_name > 0:
-            analysis += f"⚠️ **{missing_name} created element(s) missing `name` tag** - Consider adding names for better discoverability\n\n"
+            analysis += f"**{missing_name} created element(s) missing `name` tag** - Consider adding names for better discoverability\n\n"
         if missing_addr > 0:
-            analysis += f"⚠️ **{missing_addr} building(s) missing address tags** - Consider adding `addr:*` tags\n\n"
+            analysis += f"**{missing_addr} building(s) missing address tags** - Consider adding `addr:*` tags\n\n"
     
     # Pattern detection
-    analysis += "### 🔍 Pattern Detection\n\n"
+    analysis += "### Pattern Detection\n\n"
     
     if len(modified) > len(created) + len(deleted):
         analysis += "- **Update-focused changeset**: Primarily modifies existing elements rather than adding/removing\n\n"
     elif len(created) > len(modified) + len(deleted):
         analysis += "- **Expansion-focused changeset**: Primarily adds new elements to the map\n\n"
     elif len(deleted) > len(created) + len(modified):
-        analysis += "⚠️ **Deletion-focused changeset**: More deletions than additions - verify all deletions are intentional\n\n"
+        analysis += "**Deletion-focused changeset**: More deletions than additions - verify all deletions are intentional\n\n"
     
     # Recommendations
-    analysis += "### 💡 Recommendations\n\n"
+    analysis += "### Recommendations\n\n"
     
     if len(deleted) > 10:
         analysis += "- **Review deletions carefully** - This changeset contains a significant number of deletions. Verify each one is correct.\n\n"
@@ -2072,7 +1961,7 @@ def fetch_element_geometry(element_type, element_id, version=None):
         if version is not None:
             prev_version = int(version) - 1
             if prev_version < 1:
-                print(f"    ⚠️  {element_type} {element_id}: version {version} is too low (prev would be {prev_version})")
+                print(f"    WARNING: {element_type} {element_id}: version {version} is too low (prev would be {prev_version})")
                 return None
             
             # For nodes, just fetch the previous version directly
@@ -2097,7 +1986,7 @@ def fetch_element_geometry(element_type, element_id, version=None):
             
             # For ways: OSM API doesn't support /full for historical versions
             # So we fetch the way to get node references, then fetch each node
-            print(f"    🔍 Fetching {element_type} {element_id} v{prev_version}...")
+            print(f"    Fetching {element_type} {element_id} v{prev_version}...")
             url = f"https://api.openstreetmap.org/api/0.6/{element_type}/{element_id}/{prev_version}"
             response = requests.get(url, headers=headers, timeout=15)
             response.raise_for_status()
@@ -2240,7 +2129,7 @@ def get_analytics():
         hours = 24
         region_id = request.args.get('region', 'singapore')
         
-        print(f"📊 Fetching analytics for last 24 hours (region: {region_id})")
+        print(f"Fetching analytics for last 24 hours (region: {region_id})")
         
         # Fetch changesets for the time range
         changesets = fetch_osm_changesets(region=region_id, limit=1000)
@@ -2249,7 +2138,7 @@ def get_analytics():
         cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
         changesets = [cs for cs in changesets if date_parser.parse(cs['created_at']) >= cutoff]
         
-        print(f"📊 Found {len(changesets)} changesets in last 24 hours")
+        print(f"Found {len(changesets)} changesets in last 24 hours")
         
         # Hourly buckets for 24h range
         bucket_hours = 1
@@ -2333,20 +2222,20 @@ def get_analytics():
                     users_needing_review[user] = users_needing_review.get(user, 0) + 1
         
         # Debug logging to help identify issues
-        print(f"📊 Validation check: {total_changesets_checked} changesets checked, {needs_review_count} need review, {len(users_needing_review)} unique users")
+        print(f"Validation check: {total_changesets_checked} changesets checked, {needs_review_count} need review, {len(users_needing_review)} unique users")
         
         # Additional safety check: if somehow we got all users, log a warning
         if len(users_needing_review) > len(changesets) * 0.5:  # More than 50% of changesets
-            print(f"⚠️ WARNING: Suspiciously high number of users needing review ({len(users_needing_review)}/{len(changesets)} changesets)")
+            print(f"WARNING: Suspiciously high number of users needing review ({len(users_needing_review)}/{len(changesets)} changesets)")
             print(f"   Sample validation statuses: {[cs.get('validation', {}).get('status', 'missing') for cs in changesets[:5]]}")
         
         # Sort by number of changesets needing review
         sorted_users = sorted(users_needing_review.items(), key=lambda x: x[1], reverse=True)[:10]
         contributors_data = [{'user': user, 'changesets': count} for user, count in sorted_users]
         
-        print(f"📊 Users with changesets needing review: {len(users_needing_review)}")
+        print(f"Users with changesets needing review: {len(users_needing_review)}")
         if contributors_data:
-            print(f"📊 Top users needing review: {contributors_data[:5]}")
+            print(f"Top users needing review: {contributors_data[:5]}")
         
         # Get statistics for validation
         stats = get_statistics(changesets)
@@ -2402,8 +2291,8 @@ def get_analytics():
             'summary': summary
         }
         
-        print(f"📊 Analytics prepared: {total_created} created, {total_modified} modified, {total_deleted} deleted")
-        print(f"📊 Found {len(contributors_data)} users with changesets needing review")
+        print(f"Analytics prepared: {total_created} created, {total_modified} modified, {total_deleted} deleted")
+        print(f"Found {len(contributors_data)} users with changesets needing review")
         
         return jsonify({
             'success': True,
@@ -2414,323 +2303,13 @@ def get_analytics():
         })
         
     except Exception as e:
-        print(f"❌ Error fetching analytics: {e}")
+        print(f"ERROR: Error fetching analytics: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({
             'success': False,
             'error': str(e)
         }), 500
-
-# OAuth Routes
-@app.route('/oauth/login')
-def oauth_login():
-    """Initiate OSM OAuth login"""
-    try:
-        # Check if OAuth credentials are configured
-        if OSM_CLIENT_ID == 'YOUR_CLIENT_ID_HERE' or not OSM_CLIENT_ID:
-            return jsonify({
-                'error': 'OAuth not configured',
-                'message': 'OSM_CLIENT_ID environment variable is not set',
-                'hint': 'Set OSM_CLIENT_ID, OSM_CLIENT_SECRET, and OSM_REDIRECT_URI in Render environment variables'
-            }), 500
-        
-        if OSM_CLIENT_SECRET == 'YOUR_CLIENT_SECRET_HERE' or not OSM_CLIENT_SECRET:
-            return jsonify({
-                'error': 'OAuth not configured',
-                'message': 'OSM_CLIENT_SECRET environment variable is not set',
-                'hint': 'Set OSM_CLIENT_SECRET in Render environment variables'
-            }), 500
-        
-        # Clean up old states before creating a new one
-        cleanup_expired_states()
-        
-        state = secrets.token_urlsafe(32)
-        
-        # Store state server-side with timestamp (not in session cookie)
-        oauth_states[state] = datetime.now(timezone.utc)
-        save_oauth_states(oauth_states)  # Persist to file
-        
-        print(f"🔐 Initiating OAuth login...")
-        print(f"   Client ID: {OSM_CLIENT_ID[:20]}...")
-        print(f"   Redirect URI: {OSM_REDIRECT_URI}")
-        print(f"   Generated state: {state[:20]}...")
-        print(f"   Total active states: {len(oauth_states)}")
-        
-        auth_url = f"{OSM_OAUTH_URL}?client_id={OSM_CLIENT_ID}&redirect_uri={OSM_REDIRECT_URI}&response_type=code&scope=read_prefs&state={state}"
-        return redirect(auth_url)
-        
-    except Exception as e:
-        print(f"❌ Error in oauth_login: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({
-            'error': 'OAuth login failed',
-            'message': str(e),
-            'hint': 'Check Render logs and verify environment variables are set'
-        }), 500
-
-@app.route('/oauth/callback')
-def oauth_callback():
-    """Handle OSM OAuth callback"""
-    received_state = request.args.get('state')
-    
-    print(f"🔐 OAuth callback received...")
-    print(f"   Received state: {received_state[:20] if received_state else 'None'}...")
-    print(f"   Active states in storage: {len(oauth_states)}")
-    
-    # Verify state exists in server-side storage
-    if not received_state or received_state not in oauth_states:
-        # Get stored state prefixes for debugging
-        stored_states = [state[:20] + '...' for state in oauth_states.keys()]
-        
-        error_msg = {
-            'error': 'Invalid state parameter',
-            'debug': {
-                'received_state_prefix': received_state[:20] if received_state else 'None',
-                'state_exists': received_state in oauth_states if received_state else False,
-                'active_states_count': len(oauth_states),
-                'stored_state_prefixes': stored_states if stored_states else 'No states in storage',
-                'hint': 'State not found in server storage. It may have expired (10 min timeout), already been used, or you are reusing an old callback URL. Please click "Login with OSM" again to start a fresh login.'
-            }
-        }
-        print(f"❌ State validation failed!")
-        print(f"   Received state: {received_state if received_state else 'None'}")
-        print(f"   State in storage: {received_state in oauth_states if received_state else False}")
-        print(f"   Stored states: {stored_states}")
-        return jsonify(error_msg), 400
-    
-    # State is valid - remove it (one-time use)
-    state_timestamp = oauth_states.pop(received_state)
-    save_oauth_states(oauth_states)  # Persist state removal
-    state_age = (datetime.now(timezone.utc) - state_timestamp).total_seconds()
-    print(f"✅ State validated (age: {state_age:.1f}s)")
-    
-    code = request.args.get('code')
-    if not code:
-        return jsonify({'error': 'No authorization code received'}), 400
-    
-    # Exchange code for access token
-    token_data = {
-        'grant_type': 'authorization_code',
-        'code': code,
-        'redirect_uri': OSM_REDIRECT_URI,
-        'client_id': OSM_CLIENT_ID,
-        'client_secret': OSM_CLIENT_SECRET
-    }
-    
-    try:
-        print(f"🔐 Attempting OAuth token exchange...")
-        print(f"   Client ID: {OSM_CLIENT_ID[:20]}...")
-        print(f"   Redirect URI: {OSM_REDIRECT_URI}")
-        
-        # Try sending credentials in POST body (not Basic Auth)
-        token_response = requests.post(
-            OSM_TOKEN_URL, 
-            data=token_data
-        )
-        
-        # Log the response for debugging
-        print(f"   Response Status: {token_response.status_code}")
-        
-        if token_response.status_code != 200:
-            error_detail = token_response.text
-            print(f"❌ Token exchange failed: {error_detail}")
-            try:
-                error_json = token_response.json()
-                error_msg = error_json.get('error_description', error_json.get('error', error_detail))
-            except:
-                error_msg = error_detail
-            
-            return jsonify({
-                'error': 'OAuth authentication failed',
-                'details': error_msg,
-                'hint': 'Check that your OSM application is set as "Confidential" and redirect URI matches exactly'
-            }), 400
-        
-        token_json = token_response.json()
-        access_token = token_json.get('access_token')
-        
-        if not access_token:
-            print(f"❌ No access token in response: {token_json}")
-            return jsonify({'error': 'No access token received'}), 400
-        
-        print(f"✅ Token received successfully")
-        
-        # Fetch user details
-        headers = {'Authorization': f'Bearer {access_token}'}
-        user_response = requests.get(f'{OSM_API_URL}/user/details.json', headers=headers)
-        user_response.raise_for_status()
-        user_data = user_response.json()
-        
-        # Store user info in session
-        user_info = user_data.get('user', {})
-        session['access_token'] = access_token
-        session['user'] = {
-            'id': user_info.get('id'),
-            'display_name': user_info.get('display_name'),
-            'account_created': user_info.get('account_created'),
-            'changeset_count': user_info.get('changesets', {}).get('count', 0),
-            'img_url': user_info.get('img', {}).get('href', '')
-        }
-        
-        print(f"✅ Logged in as: {user_info.get('display_name')}")
-        return redirect('/')
-        
-    except requests.exceptions.RequestException as e:
-        print(f"❌ OAuth error: {e}")
-        if hasattr(e, 'response') and e.response is not None:
-            print(f"   Response: {e.response.text}")
-        return jsonify({'error': str(e), 'hint': 'Check server logs for details'}), 500
-    except Exception as e:
-        print(f"❌ Unexpected error: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/oauth/logout')
-def oauth_logout():
-    """Logout user"""
-    session.clear()
-    return redirect('/')
-
-@app.route('/oauth/debug')
-def oauth_debug():
-    """Debug endpoint to check OAuth configuration"""
-    return jsonify({
-        'oauth_config': {
-            'client_id_set': OSM_CLIENT_ID != 'YOUR_CLIENT_ID_HERE',
-            'client_id_prefix': OSM_CLIENT_ID[:20] if OSM_CLIENT_ID != 'YOUR_CLIENT_ID_HERE' else 'NOT SET',
-            'client_secret_set': OSM_CLIENT_SECRET != 'YOUR_CLIENT_SECRET_HERE',
-            'redirect_uri': OSM_REDIRECT_URI,
-            'oauth_url': OSM_OAUTH_URL,
-            'token_url': OSM_TOKEN_URL
-        },
-        'server_state': {
-            'active_oauth_states': len(oauth_states),
-            'session_configured': app.config.get('SESSION_TYPE'),
-            'secret_key_length': len(app.config.get('SECRET_KEY', '')),
-            'secret_key_file_exists': os.path.exists(SECRET_KEY_FILE)
-        },
-        'current_session': {
-            'has_user': 'user' in session,
-            'has_access_token': 'access_token' in session,
-            'session_keys': list(session.keys())
-        },
-        'instructions': {
-            'step_1': 'Check that client_id_set and client_secret_set are both true',
-            'step_2': f'Make sure you access the app at: {OSM_REDIRECT_URI.rsplit("/oauth/callback", 1)[0]}',
-            'step_3': 'Check that your OSM application redirect URI matches exactly',
-            'step_4': 'Try the login flow and check the Flask console for detailed logs'
-        }
-    })
-
-@app.route('/api/user')
-def get_current_user():
-    """Get current logged-in user info"""
-    if 'user' in session:
-        return jsonify({
-            'logged_in': True,
-            'user': session['user']
-        })
-    return jsonify({'logged_in': False})
-
-@app.route('/api/user/changesets')
-def get_user_changesets():
-    """Get changesets for the logged-in user"""
-    if 'user' not in session:
-        return jsonify({'error': 'Not logged in'}), 401
-    
-    user_id = session['user']['id']
-    region = request.args.get('region', CURRENT_REGION)
-    
-    # Validate region exists
-    if region not in REGIONS:
-        return jsonify({
-            'success': False,
-            'error': f'Region {region} not found'
-        }), 404
-    
-    region_bbox = get_region_bbox(region)
-    region_name = get_region_name(region)
-    
-    try:
-        # Fetch changesets for this user in the selected region
-        # Use a longer time range (365 days) for user's own edits
-        url = "https://api.openstreetmap.org/api/0.6/changesets"
-        
-        end_time = datetime.now(timezone.utc)
-        MY_EDITS_TIME_RANGE_DAYS = 365  # Show user's edits from last year
-        start_time = end_time - timedelta(days=MY_EDITS_TIME_RANGE_DAYS)
-        
-        params = {
-            'user': user_id,
-            'bbox': region_bbox,
-            'closed': 'true',
-            'time': f"{start_time.isoformat()}Z,{end_time.isoformat()}Z"
-        }
-        
-        headers = {'User-Agent': 'ATLAS-Singapore/1.0'}
-        response = requests.get(url, params=params, headers=headers, timeout=10)
-        response.raise_for_status()
-        
-        root = ET.fromstring(response.content)
-        changesets = []
-        
-        for changeset in root.findall('changeset'):
-            cs_id = changeset.get('id')
-            user = changeset.get('user', 'Anonymous')
-            created_at = changeset.get('created_at', '')
-            closed_at = changeset.get('closed_at', '')
-            num_changes = changeset.get('num_changes', '0')
-            min_lat = changeset.get('min_lat', '')
-            max_lat = changeset.get('max_lat', '')
-            min_lon = changeset.get('min_lon', '')
-            max_lon = changeset.get('max_lon', '')
-            
-            tags = {}
-            for tag in changeset.findall('tag'):
-                tags[tag.get('k')] = tag.get('v')
-            
-            cs_data = {
-                'id': cs_id,
-                'user': user,
-                'created_at': created_at,
-                'closed_at': closed_at,
-                'num_changes': int(num_changes),
-                'comment': tags.get('comment', 'No comment'),
-                'created_by': tags.get('created_by', 'Unknown'),
-                'bbox': {
-                    'min_lat': float(min_lat) if min_lat else None,
-                    'max_lat': float(max_lat) if max_lat else None,
-                    'min_lon': float(min_lon) if min_lon else None,
-                    'max_lon': float(max_lon) if max_lon else None,
-                } if min_lat and max_lat and min_lon and max_lon else None,
-                'tags': tags
-            }
-            
-            changesets.append(cs_data)
-        
-        # Filter to only include changesets that are primarily within the region
-        changesets = [cs for cs in changesets if is_changeset_in_region(cs, region)]
-        
-        changesets.sort(key=lambda x: x['created_at'], reverse=True)
-        
-        print(f"📊 My Edits: Found {len(changesets)} changesets for user {session['user'].get('display_name', user_id)} in {region_name} (last 365 days)")
-        
-        return jsonify({
-            'success': True,
-            'count': len(changesets),
-            'region': region,
-            'regionName': region_name,
-            'changesets': changesets,
-            'time_range': '365 days'
-        })
-        
-    except Exception as e:
-        print(f"❌ Error fetching user changesets: {e}")
-        return jsonify({'error': str(e)}), 500
-
 
 @app.route('/api/profile/<username>')
 def get_user_profile(username):
@@ -2927,7 +2506,7 @@ def get_user_region_stats(username):
                     # Add mass_deletion tag
                     cs['tags']['mass_deletion'] = 'yes'
                     cs['tags']['deleted_count'] = str(total_deleted)
-                    print(f"🏷️ Added mass_deletion tag to changeset {cs.get('id')} ({total_deleted} deletions)")
+                    print(f"Added mass_deletion tag to changeset {cs.get('id')} ({total_deleted} deletions)")
         
         # Also log to Google Sheets if validation status is 'needs_review' and Google Sheets enabled
         for cs in changesets:
@@ -3008,48 +2587,6 @@ def get_user_region_stats(username):
     except Exception as e:
         print(f"Error fetching user {region_name} stats: {e}")
         return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/upload-image', methods=['POST'])
-def upload_image():
-    """Upload an image"""
-    try:
-        if 'image' not in request.files:
-            return jsonify({'error': 'No image file provided'}), 400
-        
-        file = request.files['image']
-        
-        if file.filename == '':
-            return jsonify({'error': 'No file selected'}), 400
-        
-        if file and allowed_file(file.filename):
-            # Generate unique filename
-            ext = file.filename.rsplit('.', 1)[1].lower()
-            filename = f"{uuid.uuid4()}.{ext}"
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            
-            file.save(filepath)
-            
-            # Return the URL path
-            image_url = f"/uploads/{filename}"
-            
-            return jsonify({
-                'success': True,
-                'url': image_url,
-                'filename': filename
-            })
-        else:
-            return jsonify({'error': 'Invalid file type. Allowed: png, jpg, jpeg, gif, webp'}), 400
-            
-    except Exception as e:
-        print(f"Error uploading image: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/uploads/<filename>')
-def uploaded_file(filename):
-    """Serve uploaded files"""
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 
 # ===== ATLAS AI API =====
@@ -3158,7 +2695,7 @@ def generate_comparison_response(changeset_id):
         response = requests.get(url, timeout=30)
         
         if response.status_code != 200:
-            return f"❌ Couldn't fetch changeset #{changeset_id}. It might not exist or be inaccessible."
+            return f"Couldn't fetch changeset #{changeset_id}. It might not exist or be inaccessible."
         
         root = ET.fromstring(response.content)
         
@@ -3196,16 +2733,16 @@ Try analyzing a changeset with actual changes instead!"""
                     }
         
         # Build response with comparison data
-        response_text = f"""## 📊 Changeset Comparison: #{changeset_id}
+        response_text = f"""## Changeset Comparison: #{changeset_id}
 
 <div class="atlas-map-comparison" data-changeset-id="{changeset_id}" data-bounds='{json.dumps(bounds) if bounds else "null"}' style="display:none;"></div>
 
 I'll show you the **side-by-side before and after** changes with interactive maps:
 
-### 📈 **Summary**
-- 🟢 **Created**: {created_count} elements
-- 🟡 **Modified**: {modified_count} elements (with tag differences below)
-- 🔴 **Deleted**: {deleted_count} elements
+### **Summary**
+- **Created**: {created_count} elements
+- **Modified**: {modified_count} elements (with tag differences below)
+- **Deleted**: {deleted_count} elements
 - **Total Changes**: {total}
 
 ---
@@ -3214,7 +2751,7 @@ I'll show you the **side-by-side before and after** changes with interactive map
         
         # Show created elements (sample) - FILTER: Only show routing elements (roads)
         if created_count > 0:
-            response_text += "### 🟢 **Created Elements**\n\n"
+            response_text += "### **Created Elements**\n\n"
             create_elem = root.find('create')
             if create_elem is not None:
                 shown = 0
@@ -3244,7 +2781,7 @@ I'll show you the **side-by-side before and after** changes with interactive map
         
         # Show modified elements with before/after tags - FILTER: Only show routing elements (roads)
         if modified_count > 0:
-            response_text += "### 🟡 **Modified Elements**\n\n"
+            response_text += "### **Modified Elements**\n\n"
             modify_elem = root.find('modify')
             if modify_elem is not None:
                 shown = 0
@@ -3333,7 +2870,7 @@ I'll show you the **side-by-side before and after** changes with interactive map
         
         # Show deleted elements (sample) - FILTER: Only show routing elements (roads)
         if deleted_count > 0:
-            response_text += "### 🔴 **Deleted Elements**\n\n"
+            response_text += "### **Deleted Elements**\n\n"
             delete_elem = root.find('delete')
             if delete_elem is not None:
                 shown = 0
@@ -3364,7 +2901,7 @@ I'll show you the **side-by-side before and after** changes with interactive map
         # Add links for full comparison
         response_text += """---
 
-### 🗺️ **View on Interactive Map**
+### **View on Interactive Map**
 
 Want to see these changes **visualized on a map**?
 
@@ -3383,14 +2920,14 @@ You'll see:
 - [OSMCha](https://osmcha.org/changesets/{}) (Validation analysis)
 - [Achavi Diff](https://overpass-api.de/achavi/?changeset={}) (Visual diff)
 
-💡 *You're already seeing the tag comparison above! The dashboard comparison adds map visualization.*
+*You're already seeing the tag comparison above! The dashboard comparison adds map visualization.*
 """.format(changeset_id, changeset_id, changeset_id, changeset_id)
         
         return response_text
         
     except Exception as e:
         print(f"Error generating comparison for {changeset_id}: {e}")
-        return f"""❌ Sorry, I encountered an error while fetching the comparison data for changeset #{changeset_id}.
+        return f"""Sorry, I encountered an error while fetching the comparison data for changeset #{changeset_id}.
 
 **Possible reasons:**
 - The changeset might be very large
@@ -3433,10 +2970,10 @@ def analyze_changeset(data):
     if not is_empty:
         # Check for suspicious patterns
         if deleted > created + modified and deleted > 10:
-            flags.append("⚠️ **High deletion rate** - This changeset has more deletions than additions/modifications")
+            flags.append("**High deletion rate** - This changeset has more deletions than additions/modifications")
         
         if total_changes > 500:
-            flags.append("📊 **Large changeset** - Contains a high number of changes")
+            flags.append("**Large changeset** - Contains a high number of changes")
         
         if not comment or comment == 'No comment provided':
             flags.append("💬 **Missing comment** - No changeset comment explaining the changes")
@@ -3446,30 +2983,30 @@ def analyze_changeset(data):
     
     # Positive indicators
     if comment and comment != 'No comment provided':
-        insights.append(f"✅ **Good documentation** - Changeset comment: \"{comment}\"")
+        insights.append(f"**Good documentation** - Changeset comment: \"{comment}\"")
     
     if source != 'Not specified':
-        insights.append(f"✅ **Source provided** - {source}")
+        insights.append(f"**Source provided** - {source}")
     
     # Build the response
     response = f"""## Changeset Analysis: #{changeset_id}
 
-### 📋 **Overview**
+### **Overview**
 - **Mapper**: {user}
 - **Date**: {created_date}
 - **Editor**: {created_by}
 - **Total Changes**: {total_changes}
 
-### 📊 **Change Breakdown**
-- 🟢 **Created**: {created} elements
-- 🟡 **Modified**: {modified} elements
-- 🔴 **Deleted**: {deleted} elements
+### **Change Breakdown**
+- **Created**: {created} elements
+- **Modified**: {modified} elements
+- **Deleted**: {deleted} elements
 
 """
     
     # Special message for empty changesets
     if is_empty:
-        response += """### 🔍 **Empty Changeset**
+        response += """### **Empty Changeset**
 
 This changeset appears to be **empty** - it was opened but no changes were uploaded to it.
 
@@ -3484,20 +3021,20 @@ This changeset appears to be **empty** - it was opened but no changes were uploa
 """
     
     if insights:
-        response += "### ✅ **Positive Indicators**\n"
+        response += "### **Positive Indicators**\n"
         for insight in insights:
             response += f"{insight}\n"
         response += "\n"
     
     if flags:
-        response += "### ⚠️ **Potential Issues**\n"
+        response += "### **Potential Issues**\n"
         for flag in flags:
             response += f"{flag}\n"
         response += "\n"
     
     # Recommendations
     if not is_empty:
-        response += """### 💡 **Recommendations**
+        response += """### **Recommendations**
 
 """
         
@@ -3512,7 +3049,7 @@ This changeset appears to be **empty** - it was opened but no changes were uploa
     response += f"\n🔗 [View on OSM](https://www.openstreetmap.org/changeset/{changeset_id}) | "
     response += f"[View on OSMCha](https://osmcha.org/changesets/{changeset_id})"
     
-    # ✅ Log to Google Sheets if suspicious
+    # Log to Google Sheets if suspicious
     if flags:  # If there are any warning flags
         log_changeset_needing_review(data, flags, response)
     
@@ -3569,7 +3106,7 @@ def analyze_image_with_ai(image_path, message, context):
     # Get the filename for reference
     filename = os.path.basename(image_path) if image_path else "uploaded image"
     
-    return f"""## 📸 Image Received!
+    return f"""## Image Received!
 
 I've received your image: **{filename}**
 
@@ -3577,11 +3114,11 @@ Your message: "{message or 'No message provided'}"
 
 ---
 
-### ℹ️ About Image Analysis
+### About Image Analysis
 
 Currently, Atlas AI uses **Groq** which provides lightning-fast text responses but doesn't support image analysis yet.
 
-### 🛠️ What I Can Help With Instead:
+### What I Can Help With Instead:
 
 **Without seeing the image, I can still assist if you describe what you're looking at:**
 
@@ -3590,7 +3127,7 @@ Currently, Atlas AI uses **Groq** which provides lightning-fast text responses b
 3. **Ask about tagging** - "How should I tag a building with shops on ground floor?"
 4. **Validation questions** - "What does 'Needs Review' mean?"
 
-### 💡 Pro Tip
+### Pro Tip
 
 For visual changeset comparison, use the **Compare** button in the dashboard - it shows before/after maps with color-coded changes!
 
@@ -3652,7 +3189,6 @@ Dashboard features you can help explain:
 - Validation status (Valid, Needs Review)
 - Map visualization with clustering
 - Changeset comparison tool
-- My Edits section for personal contributions
 - Changeset monitoring and validation features"""
 
         # Add context about the user if available
@@ -3685,12 +3221,12 @@ Dashboard features you can help explain:
         
     except Exception as e:
         error_msg = str(e)
-        print(f"❌ Groq API Error: {error_msg}")
+        print(f"ERROR: Groq API Error: {error_msg}")
         app.logger.error(f"Groq text response error: {error_msg}")
         
         # Check for common error types and provide helpful messages
         if "invalid_api_key" in error_msg.lower() or "authentication" in error_msg.lower():
-            return f"""## ⚠️ Groq API Key Error
+            return f"""## Groq API Key Error
 
 Your Groq API key appears to be invalid or expired.
 
@@ -3747,7 +3283,7 @@ Check the OSM Wiki for detailed tagging schemas: https://wiki.openstreetmap.org/
     
     # Changeset Analysis
     elif any(word in message_lower for word in ['analyze', 'changeset', 'suspicious']):
-        return """I can help you analyze changesets in detail! 🔍
+        return """I can help you analyze changesets in detail!
 
 **To analyze a specific changeset**, just tell me:
 - "Analyze changeset 12345678"
@@ -3755,11 +3291,11 @@ Check the OSM Wiki for detailed tagging schemas: https://wiki.openstreetmap.org/
 - "Review 12345678"
 
 I'll fetch the data from OSM and provide you with:
-- 📋 Complete overview (mapper, date, editor, total changes)
-- 📊 Detailed breakdown (created, modified, deleted elements)
-- ✅ Positive indicators (good practices)
-- ⚠️ Potential issues (red flags)
-- 💡 Recommendations for action
+- Complete overview (mapper, date, editor, total changes)
+- Detailed breakdown (created, modified, deleted elements)
+- Positive indicators (good practices)
+- Potential issues (red flags)
+- Recommendations for action
 
 **General tips for manual analysis:**
 1. Check the comparison tool in the dashboard
@@ -3767,15 +3303,15 @@ I'll fetch the data from OSM and provide you with:
 3. Review the user's edit history
 4. Use OSMCha for detailed validation
 
-Just give me a changeset ID and I'll do the heavy lifting! 🚀"""
+Just give me a changeset ID and I'll do the heavy lifting!"""
     
     # Validation Issues
     elif 'validation' in message_lower or 'review' in message_lower:
         return """Changeset validation in ATLAS:
 
-🟢 **Valid** - No issues detected
+**Valid** - No issues detected
 
-🔍 **Needs Review** - Triggered by:
+**Needs Review** - Triggered by:
    - Mass deletions (50+ deletions)
    - Requires manual review to ensure changes are appropriate
 
@@ -3785,9 +3321,9 @@ Ask me to analyze a specific changeset for details!"""
     elif any(word in message_lower for word in ['comparison', 'compare', 'tool']):
         return """The **Comparison Tool** lets you visualize changes:
 
-✨ **Features**:
+**Features**:
 • Side-by-side maps showing before/after
-• Color-coded changes (🟢 Created, 🟡 Modified, 🔴 Deleted)
+• Color-coded changes (Created, Modified, Deleted)
 • Detailed tag differences
 • Timeline of changes
 • Export capability
@@ -3799,63 +3335,41 @@ Ask me to analyze a specific changeset for details!"""
    - "Show me the changes in #172640112"
    - "What's the diff for changeset 172640112"
 
-I'll fetch the before/after data and summarize the key changes for you! 🚀"""
+I'll fetch the before/after data and summarize the key changes for you!"""
     
-    # Collaboration (removed teams feature)
+    # Collaboration
     elif 'team' in message_lower or 'collaborate' in message_lower:
         return """**Collaboration Features:**
 
-The teams feature has been removed. You can still:
-• Track changesets and validation status
+You can:
 • Track changesets and validation status
 • Use the comparison tool to review changes
+• Coordinate through OSM community channels
 
-For collaboration, consider using external tools or coordinating through OSM community channels."""
+For team collaboration, consider using external tools or coordinating through OSM community channels."""
     
-    # My Edits
-    elif 'my edits' in message_lower or 'my changesets' in message_lower:
-        username = context.get('username')
-        if username:
-            return f"""Your editing activity, **{username}**:
-
-The **My Edits** section shows:
-• All your changesets in Singapore
-• Detailed breakdown of created/modified/deleted elements
-• Map visualization of your contributions
-• Quick access to comparison and analysis tools
-
-Keep up the great mapping work! 🗺️"""
-        else:
-            return """The **My Edits** section shows your personal contributions:
-
-• Your changesets in Singapore
-• Created, modified, and deleted elements
-• Geographic visualization
-• Quick access to tools
-
-Log in with your OSM account to see your edits!"""
     
     # General Help - Only match specific help requests
     elif any(phrase in message_lower for phrase in ['what can you do', 'what can you help', 'help me', 'how do you work', 'guide me']):
         return """I'm **Atlas**, your AI assistant for OpenStreetMap! I can help with:
 
-🗺️ **Mapping Guidance**
+**Mapping Guidance**
 • Tagging best practices
 • OSM guidelines and documentation
 • Quality control tips
 
-🔍 **Analysis Tools**
+**Analysis Tools**
 • **Analyze changesets**: "analyze changeset 12345678"
 • **Compare before/after**: "compare changeset 12345678"
 • Validation issue explanation
 • User contribution review
 
-👥 **Organization**
+**Organization**
 • Changeset monitoring
 • Changeset monitoring
 • Validation tracking
 
-📊 **Dashboard Navigation**
+**Dashboard Navigation**
 • Feature explanations
 • Tips and shortcuts
 
@@ -3896,11 +3410,10 @@ if __name__ == '__main__':
                      os.environ.get('RAILWAY_ENVIRONMENT') is not None)
     
     if is_production:
-        print("🚀 Starting ATLAS - Singapore OpenStreetMap Monitor (Production)")
+        print("Starting ATLAS - Singapore OpenStreetMap Monitor (Production)")
         print(f"   Running on port {port}")
-        print(f"   Session Cookie Secure: {os.environ.get('SESSION_COOKIE_SECURE', 'False')}")
     else:
-        print("🔧 Starting ATLAS - Singapore OpenStreetMap Monitor (Development)")
+        print("Starting ATLAS - Singapore OpenStreetMap Monitor (Development)")
         print("   Navigate to http://localhost:5000")
     
     app.run(debug=not is_production, host='0.0.0.0', port=port)
