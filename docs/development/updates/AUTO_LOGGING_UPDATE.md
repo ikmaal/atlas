@@ -110,7 +110,7 @@ This prevents duplicate alerts when rows shift positions.
 
 1. **Commit and push the changes:**
    ```bash
-   git add app.py slack_appscript.js AUTO_LOGGING_UPDATE.md
+   git add app.py slack_appscript.js docs/development/updates/AUTO_LOGGING_UPDATE.md
    git commit -m "Add automatic Google Sheets logging for changesets needing review"
    git push origin main
    ```

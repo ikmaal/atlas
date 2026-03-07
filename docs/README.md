@@ -18,10 +18,6 @@ Everything you need to get started with ATLAS:
 
 ### ✨ [Features](features/)
 Detailed documentation for all ATLAS features:
-- [Teams Feature](features/TEAMS_FEATURE.md) - Organize users into teams
-- [Notes Feature](features/NOTES_FEATURE.md) - Add notes to changesets
-- [Notes Formatting](features/NOTES_FORMATTING.md) - Rich text formatting
-- [Notes Color Picker](features/NOTES_COLOR_PICKER.md) - Color customization
 - [Comparison Tool](features/COMPARISON_TOOL_FEATURE.md) - Compare changesets
 - [ATLAS AI Map Comparison](features/ATLAS_AI_MAP_COMPARISON.md) - AI-powered comparison
 - [Map Tiles Update](features/ATLAS_MAP_TILES_UPDATE.md) - Custom map tiles

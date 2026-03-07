@@ -155,7 +155,7 @@ Deleted elements:
 ### Step 1: Commit Changes
 
 ```bash
-git add app.py static/script.js DELETED_WAYS_FIX.md COMPARISON_TOOL_FIXES.md
+git add app.py static/script.js docs/development/fixes/DELETED_WAYS_FIX.md docs/development/fixes/COMPARISON_TOOL_FIXES.md
 git commit -m "Fix deleted ways not displaying in comparison tool
 
 - Fetch way without /full endpoint (which doesn't work for historical versions)

@@ -111,7 +111,7 @@ GOOGLE_SHEETS_ENABLED=False
 1. Visit your Render URL: `https://your-app-name.onrender.com`
 2. Wait 30-60 seconds for first load (cold start)
 3. Click "Login with OSM"
-4. Test creating notes, teams, etc.
+4. Test the dashboard functionality
 
 ## 🎯 Post-Deployment Tips
 
@@ -145,8 +145,8 @@ Render will automatically redeploy! 🚀
    - **Impact**: Users may need to re-login
    - **Solution**: Use Redis sessions (Render free Redis available)
 
-2. **JSON Files** (notes.json, teams.json, etc.) - Will be lost on restart
-   - **Impact**: Notes and teams will disappear
+2. **JSON Files** - Will be lost on restart
+   - **Impact**: Data will disappear
    - **Solution**: Use Render PostgreSQL free tier
 
 3. **Uploaded Images** - Will be lost on restart

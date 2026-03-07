@@ -118,12 +118,10 @@ To avoid 30-60 second cold starts:
 - ✅ Interactive maps
 - ✅ Atlas AI (if API key provided)
 - ✅ User login (OSM OAuth)
-- ✅ Basic notes and teams
+- ✅ Basic functionality
 
 ### What Doesn't Persist ⚠️
-- ⚠️ Notes will be lost on app restart
-- ⚠️ Teams will be lost on app restart
-- ⚠️ Uploaded images will be lost on app restart
+- ⚠️ Data will be lost on app restart
 - ⚠️ Sessions may be lost on app restart
 
 ### Why?
@@ -170,7 +168,7 @@ Render's free tier uses **ephemeral storage** - files are reset when the app res
 2. Set up UptimeRobot to keep app awake
 3. Or upgrade to paid plan ($7/month - no sleep)
 
-### ❌ Notes/Teams Disappear
+### ❌ Data Disappears
 **Symptom**: Data is lost after some time
 
 **Solutions**:
@@ -234,8 +232,8 @@ Share it with your team and start monitoring OSM changesets in Singapore!
 
 ## 📞 Need Help?
 
-- **Quick Guide**: `RENDER_QUICK_START.md`
-- **Full Documentation**: `DEPLOYMENT.md`
+- **Quick Guide**: `../setup/quick-start/RENDER_QUICK_START.md`
+- **Full Documentation**: `../setup/DEPLOYMENT.md`
 - **Render Docs**: https://render.com/docs
 - **OSM OAuth**: https://www.openstreetmap.org/oauth2/applications
 

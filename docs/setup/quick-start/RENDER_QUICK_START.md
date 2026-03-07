@@ -74,7 +74,7 @@ This pings your app every 5 minutes to keep it warm!
 
 ## ⚠️ Important: Data Persistence
 
-**Your notes, teams, and uploaded images will disappear when Render restarts your app.**
+**Your data will disappear when Render restarts your app.**
 
 This is because Render's free tier uses **ephemeral storage**.
 
@@ -82,7 +82,7 @@ This is because Render's free tier uses **ephemeral storage**.
 
 **Option 1: Accept It** (Good for testing)
 - Just use it for viewing changesets
-- Don't rely on saved notes/teams
+- Don't rely on saved data
 
 **Option 2: Add Database** (15 min setup)
 - I can help you add PostgreSQL (free on Render)
@@ -110,7 +110,7 @@ Let me know if you want Option 2! Just say "add database" and I'll set it up.
 
 ## 📞 Need Help?
 
-Check the full guide: `DEPLOYMENT.md`
+Check the full guide: `../DEPLOYMENT.md`
 
 Or share your error message and I'll help! 🚀
 

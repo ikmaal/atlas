@@ -186,7 +186,7 @@ py app.py
 ## 📖 Additional Documentation
 
 - **Full details:** See `docs/features/CHANGESET_TIME_RANGE.md`
-- **Google Sheets:** See `GOOGLE_SHEETS_SETUP.md`
+- **Google Sheets:** See `../setup/GOOGLE_SHEETS_SETUP.md`
 - **Slack notifications:** See `SLACK_WORKFLOW_SETUP.md`
 
 ---

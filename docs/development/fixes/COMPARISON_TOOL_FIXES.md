@@ -192,7 +192,7 @@ name: Example Street
 
 ```bash
 # Stage files
-git add app.py static/script.js COMPARISON_TOOL_FIXES.md
+git add app.py static/script.js docs/development/fixes/COMPARISON_TOOL_FIXES.md
 
 # Commit
 git commit -m "Fix deleted ways not showing in comparison tool and console error"

@@ -88,34 +88,34 @@
 ### **📍 October 20, 2025** - Feature Expansion (71 days after start)
 
 #### **Collaboration Platform**
-- ✅ **Teams Feature** (`TEAMS_FEATURE.md`)
-  - Create and manage teams
-  - Team descriptions
-  - Member management
-  - **Team Chat System**
-    - Real-time messaging
-    - Message history
-    - Changeset linking
-  - **Task Management**
-    - Assign tasks to members
-    - Status tracking (Pending/In Progress/Completed)
-    - Priority levels
-  - JSON-based persistence
+- ~~✅ **Teams Feature** (`TEAMS_FEATURE.md`)~~ *(Removed)*
+  - ~~Create and manage teams~~
+  - ~~Team descriptions~~
+  - ~~Member management~~
+  - ~~**Team Chat System**~~
+    - ~~Real-time messaging~~
+    - ~~Message history~~
+    - ~~Changeset linking~~
+  - ~~**Task Management**~~
+    - ~~Assign tasks to members~~
+    - ~~Status tracking (Pending/In Progress/Completed)~~
+    - ~~Priority levels~~
+  - ~~JSON-based persistence~~
 
-#### **Notes & Documentation**
-- ✅ **Rich Notes System** (`NOTES_FEATURE.md`)
-  - Create, edit, delete notes
-  - Multiple note types
-  - Persistent storage
-- ✅ **Notes Formatting** (`NOTES_FORMATTING.md`)
-  - Rich text support
-  - Markdown-style formatting
-  - Links and mentions
-- ✅ **Color Picker** (`NOTES_COLOR_PICKER.md`)
-  - 8 beautiful color themes
-  - Background color customization
-  - Visual organization
-  - Quick Start guide (`QUICK_START_COLORS.md`)
+#### **Notes & Documentation** *(Removed)*
+- ~~✅ **Rich Notes System** (`NOTES_FEATURE.md`)~~ *(Removed)*
+  - ~~Create, edit, delete notes~~
+  - ~~Multiple note types~~
+  - ~~Persistent storage~~
+- ~~✅ **Notes Formatting** (`NOTES_FORMATTING.md`)~~ *(Removed)*
+  - ~~Rich text support~~
+  - ~~Markdown-style formatting~~
+  - ~~Links and mentions~~
+- ~~✅ **Color Picker** (`NOTES_COLOR_PICKER.md`)~~ *(Removed)*
+  - ~~8 beautiful color themes~~
+  - ~~Background color customization~~
+  - ~~Visual organization~~
+  - ~~Quick Start guide (`QUICK_START_COLORS.md`)~~
 
 #### **Analysis Tools**
 - ✅ **Comparison Tool** (`COMPARISON_TOOL_FEATURE.md`)
@@ -298,7 +298,7 @@
 - ✅ Appends new rows automatically
 
 #### **Documentation**
-- ✅ **Complete Setup Guide** (`GOOGLE_SHEETS_SETUP.md`)
+- ✅ **Complete Setup Guide** (`../setup/GOOGLE_SHEETS_SETUP.md`)
   - 6 setup steps with screenshots descriptions
   - Google Cloud Console walkthrough
   - Service account creation
@@ -308,7 +308,6 @@
   - Troubleshooting section
   - Security notes
   - Customization tips
-- ✅ **Template Credentials** (`google_credentials_TEMPLATE.json`)
   - Example structure
   - Field descriptions
 
@@ -346,7 +345,7 @@
 - 🗺️ **Mapping & Visualization**: 6 features
 - 🔐 **Authentication & Security**: 2 features
 - 👥 **Collaboration**: 4 features (Teams, Chat, Tasks, Comments)
-- 📝 **Content Management**: 2 features (Notes, Formatting)
+- ~~📝 **Content Management**: 2 features (Notes, Formatting)~~ *(Removed)*
 - 🔍 **Analysis & Monitoring**: 5 features (Validation, Comparison, Atlas AI, Sheets)
 - 🎨 **UI/UX Enhancements**: 8 improvements
 - 🔧 **Integrations**: 3 external services (Slack, Google Sheets, OAuth)
@@ -386,7 +385,7 @@
 
 ### **Phase 2** (Oct 20) - Enhancement
 - Duration: 1 day (after 71-day gap)
-- Focus: Collaboration, notes, advanced tools
+- Focus: Collaboration, advanced tools
 - Files: 12 documentation files
 
 ### **Phase 3** (Oct 21) - AI Integration
@@ -412,7 +411,7 @@
 
 **Evolved into:**
 - AI-powered analysis platform
-- Team collaboration hub
+- ~~Team collaboration hub~~ *(Removed)*
 - Automated data logging
 - Rich content management
 - Multiple external integrations
@@ -421,7 +420,7 @@
 ### **Key Milestones**
 1. ✅ **OAuth Login** - User authentication
 2. ✅ **Validation System** - Automatic suspicious changeset detection
-3. ✅ **Teams Feature** - Collaborative workspace
+3. ~~✅ **Teams Feature** - Collaborative workspace~~ *(Removed)*
 4. ✅ **Atlas AI** - Conversational AI assistant
 5. ✅ **Markdown Support** - Rich formatted responses
 6. ✅ **Smart Analysis** - Live OSM data integration
@@ -436,10 +435,10 @@
 ### **Capabilities**
 ✅ Real-time OSM monitoring  
 ✅ AI-powered changeset analysis  
-✅ Team collaboration & task management  
+~~✅ Team collaboration & task management~~ *(Removed)*  
 ✅ Persistent data storage (Google Sheets)  
 ✅ External notifications (Slack)  
-✅ Rich content creation (Notes with colors)  
+~~✅ Rich content creation (Notes with colors)~~ *(Removed)*  
 ✅ Advanced filtering & search  
 ✅ OAuth authentication  
 ✅ Before/after comparisons  
@@ -478,7 +477,7 @@ Based on the current trajectory, potential next features could include:
 In just **74 days** (with ~23 active development days), this project has grown from a simple monitoring tool into a **comprehensive OSM management platform** featuring:
 
 - 🤖 **AI-powered intelligence**
-- 👥 **Team collaboration**
+- ~~👥 **Team collaboration**~~ *(Removed)*
 - 📊 **Data persistence**
 - 🔗 **Multiple integrations**
 - 🎨 **Professional UI/UX**
