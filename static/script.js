@@ -926,7 +926,7 @@ function updateStatistics(stats) {
         
         const timeRangeLabel = document.getElementById('timeRangeLabel');
         if (timeRangeLabel) {
-            timeRangeLabel.textContent = `Showing data from the ${timeText}`;
+            timeRangeLabel.textContent = `In the ${timeText}...`;
         }
     }
     
