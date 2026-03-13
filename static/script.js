@@ -20,8 +20,18 @@ let validationVisibility = {
 let currentFilters = {
     search: '',
     validity: 'all',
-    keyword: ''
+    keyword: '',
+    criteria: {
+        mass_changes: true,
+        erp: true,
+        oneway: true,
+        access: true
+    }
 };
+// Pagination state
+let currentPage = 1;
+const itemsPerPage = 20;
+let filteredChangesets = []; // Store filtered changesets for pagination
 
 // Persistent storage for needs_review changesets
 const STORAGE_KEY = 'atlas_needs_review_changesets';
@@ -146,8 +156,24 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Check for changeset parameter in URL
     const urlParams = new URLSearchParams(window.location.search);
     const changesetParam = urlParams.get('changeset');
+    const comparisonParam = urlParams.get('comparison');
     
-    if (changesetParam) {
+    if (comparisonParam) {
+        // Open comparison tool directly for the specified changeset
+        loadData().then(() => {
+            // Switch to list view tab if not already there
+            const listTab = document.querySelector('.sidenav-item[onclick*="list"]');
+            if (listTab) {
+                listTab.click();
+            }
+            // Wait a bit for tab to switch, then open comparison modal
+            setTimeout(() => {
+                if (typeof showChangesetComparison === 'function') {
+                    showChangesetComparison(comparisonParam);
+                }
+            }, 500);
+        });
+    } else if (changesetParam) {
         // Load data and then filter to the specified changeset
         loadData().then(() => {
             filterToChangeset(changesetParam);
@@ -412,6 +438,8 @@ function initFilters() {
     const searchInput = document.getElementById('searchFilter');
     const keywordInput = document.getElementById('keywordFilter');
     const filterButtons = document.querySelectorAll('.filter-btn');
+    const criteriaFiltersRow = document.getElementById('criteriaFiltersRow');
+    const criteriaCheckboxes = document.querySelectorAll('.criteria-filter-checkbox input');
 
     // Search input filter (username)
     if (searchInput) {
@@ -439,7 +467,27 @@ function initFilters() {
             this.classList.add('active');
             
             // Update filter
-            currentFilters.validity = this.getAttribute('data-filter');
+            const validity = this.getAttribute('data-filter');
+            currentFilters.validity = validity;
+            
+            // Show/hide criteria filters based on validity filter
+            if (criteriaFiltersRow) {
+                if (validity === 'needs_review') {
+                    criteriaFiltersRow.style.display = 'flex';
+                } else {
+                    criteriaFiltersRow.style.display = 'none';
+                }
+            }
+            
+            applyFilters();
+        });
+    });
+
+    // Criteria filter checkboxes
+    criteriaCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            const criteriaValue = this.value;
+            currentFilters.criteria[criteriaValue] = this.checked;
             applyFilters();
         });
     });
@@ -450,6 +498,12 @@ function resetFilters() {
     currentFilters.validity = 'all';
     currentFilters.search = '';
     currentFilters.keyword = '';
+    currentFilters.criteria = {
+        mass_changes: true,
+        erp: true,
+        oneway: true,
+        access: true
+    };
     
     // Update UI - reset filter buttons
     const filterButtons = document.querySelectorAll('.filter-btn');
@@ -466,6 +520,18 @@ function resetFilters() {
     const keywordInput = document.getElementById('keywordFilter');
     if (searchInput) searchInput.value = '';
     if (keywordInput) keywordInput.value = '';
+    
+    // Reset criteria checkboxes
+    const criteriaCheckboxes = document.querySelectorAll('.criteria-filter-checkbox input');
+    criteriaCheckboxes.forEach(checkbox => {
+        checkbox.checked = true;
+    });
+    
+    // Hide criteria filters row
+    const criteriaFiltersRow = document.getElementById('criteriaFiltersRow');
+    if (criteriaFiltersRow) {
+        criteriaFiltersRow.style.display = 'none';
+    }
     
     // Re-apply filters to show all changesets
     applyFilters();
@@ -548,9 +614,31 @@ function applyFilters() {
             matchesValidity = validityStatus === currentFilters.validity;
         }
 
-        return matchesSearch && matchesKeyword && matchesValidity;
+        // Filter by criteria (only when filtering by needs_review)
+        let matchesCriteria = true;
+        if (currentFilters.validity === 'needs_review' && matchesValidity) {
+            const validation = cs.validation || {};
+            const flags = validation.flags || [];
+            
+            // Check if any of the selected criteria match
+            const selectedCriteria = Object.keys(currentFilters.criteria).filter(
+                key => currentFilters.criteria[key]
+            );
+            
+            if (selectedCriteria.length > 0) {
+                // At least one selected criterion must be present in the flags
+                matchesCriteria = selectedCriteria.some(criterion => flags.includes(criterion));
+            }
+        }
+
+        return matchesSearch && matchesKeyword && matchesValidity && matchesCriteria;
     });
 
+    // Store filtered changesets for pagination
+    filteredChangesets = filtered;
+    // Reset to first page when filters change
+    currentPage = 1;
+    
     updateChangesetsList(filtered);
     updateMap(filtered);
 }
@@ -950,6 +1038,7 @@ function updateStatistics(stats) {
 // Update changesets list
 function updateChangesetsList(changesets) {
     const container = document.getElementById('changesetsList');
+    const paginationContainer = document.getElementById('changesetsPagination');
     
     if (!changesets || changesets.length === 0) {
         const regionName = currentRegionData?.name || 'the selected';
@@ -964,10 +1053,20 @@ function updateChangesetsList(changesets) {
                 <p>No recent changesets match your filters in the ${regionName} region.</p>
             </div>
         `;
+        // Hide pagination if no results
+        if (paginationContainer) {
+            paginationContainer.innerHTML = '';
+        }
         return;
     }
     
-    container.innerHTML = changesets.map(cs => {
+    // Calculate pagination
+    const totalPages = Math.ceil(changesets.length / itemsPerPage);
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const paginatedChangesets = changesets.slice(startIndex, endIndex);
+    
+    container.innerHTML = paginatedChangesets.map(cs => {
         let detailsHTML = '';
         if (cs.details) {
             const details = cs.details;
@@ -1010,20 +1109,43 @@ function updateChangesetsList(changesets) {
             }
         }
         
-        // Add mass deletion tag badge if present
-        let massDeletionHTML = '';
-        if (cs.tags && cs.tags.mass_deletion === 'yes') {
+        // Add mass changes tag badge if present
+        let massChangesHTML = '';
+        if (cs.tags && cs.tags.mass_changes === 'yes') {
+            const totalChanges = cs.tags.total_changes || 
+                (cs.details ? (cs.details.total_created || 0) + (cs.details.total_modified || 0) + (cs.details.total_deleted || 0) : 0) || 
+                '50+';
+            const createdCount = cs.tags.created_count || cs.details?.total_created || 0;
+            const modifiedCount = cs.tags.modified_count || cs.details?.total_modified || 0;
+            const deletedCount = cs.tags.deleted_count || cs.details?.total_deleted || 0;
+            const changeDetails = [];
+            if (createdCount > 0) changeDetails.push(`${createdCount} added`);
+            if (modifiedCount > 0) changeDetails.push(`${modifiedCount} modified`);
+            if (deletedCount > 0) changeDetails.push(`${deletedCount} deleted`);
+            const changeSummary = changeDetails.length > 0 ? changeDetails.join(', ') : `${totalChanges} changes`;
+            massChangesHTML = `<span class="badge badge-mass-deletion" title="Mass changes: ${changeSummary}">Mass Changes</span>`;
+        } else if (cs.tags && cs.tags.mass_deletion === 'yes') {
+            // Backward compatibility: show old mass_deletion tag
             const deletedCount = cs.tags.deleted_count || cs.details?.total_deleted || '50+';
-            massDeletionHTML = `<span class="badge badge-mass-deletion" title="Mass deletion: ${deletedCount} elements deleted">Mass Deletion</span>`;
-        } else if (cs.validation && cs.validation.status === 'needs_review' && cs.details && cs.details.total_deleted >= 50) {
-            // Fallback: Check if it should have the tag but doesn't (for debugging)
-            console.warn(`Changeset ${cs.id} should have mass_deletion tag but doesn't. Tags:`, cs.tags, 'Deleted:', cs.details.total_deleted);
+            massChangesHTML = `<span class="badge badge-mass-deletion" title="Mass deletion: ${deletedCount} elements deleted">Mass Deletion</span>`;
         }
         
         // Add ERP badge if name=ERP detected
         let erpBadgeHTML = '';
         if (cs.validation && cs.validation.flags && cs.validation.flags.includes('erp')) {
             erpBadgeHTML = `<span class="badge badge-erp" title="ERP modification detected">ERP</span>`;
+        }
+        
+        // Add oneway badge if one-way edits detected
+        let onewayBadgeHTML = '';
+        if (cs.validation && cs.validation.flags && cs.validation.flags.includes('oneway')) {
+            onewayBadgeHTML = `<span class="badge badge-oneway" title="One-way edit detected">One-Way</span>`;
+        }
+        
+        // Add access badge if access tag edits detected
+        let accessBadgeHTML = '';
+        if (cs.validation && cs.validation.flags && cs.validation.flags.includes('access')) {
+            accessBadgeHTML = `<span class="badge badge-access" title="Access tag edit detected">Access</span>`;
         }
         
         return `
@@ -1035,8 +1157,10 @@ function updateChangesetsList(changesets) {
                 </div>
                 <div class="changeset-header-right">
                     ${validationHTML}
-                    ${massDeletionHTML}
+                    ${massChangesHTML}
                     ${erpBadgeHTML}
+                    ${onewayBadgeHTML}
+                    ${accessBadgeHTML}
                     <button class="comparison-btn" onclick="showChangesetComparison('${cs.id}')" title="Compare before/after changes">
                         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polyline points="16 18 22 12 16 6"></polyline>
@@ -1061,6 +1185,99 @@ function updateChangesetsList(changesets) {
         </div>
         `;
     }).join('');
+    
+    // Update pagination controls
+    updatePaginationControls(changesets.length, totalPages);
+}
+
+// Update pagination controls
+function updatePaginationControls(totalItems, totalPages) {
+    const paginationContainer = document.getElementById('changesetsPagination');
+    if (!paginationContainer) return;
+    
+    if (totalPages <= 1) {
+        paginationContainer.innerHTML = '';
+        return;
+    }
+    
+    const startItem = (currentPage - 1) * itemsPerPage + 1;
+    const endItem = Math.min(currentPage * itemsPerPage, totalItems);
+    
+    let paginationHTML = `
+        <div class="pagination-info" style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 12px;">
+            Showing ${startItem}-${endItem} of ${totalItems} changesets
+        </div>
+        <div class="pagination-controls" style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+    `;
+    
+    // Previous button
+    paginationHTML += `
+        <button class="pagination-btn" onclick="goToPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''} style="padding: 8px 16px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary); border-radius: 6px; cursor: pointer; transition: all 0.2s ease; ${currentPage === 1 ? 'opacity: 0.5; cursor: not-allowed;' : ''}">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+            Previous
+        </button>
+    `;
+    
+    // Page numbers
+    const maxVisiblePages = 5;
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+    
+    if (endPage - startPage < maxVisiblePages - 1) {
+        startPage = Math.max(1, endPage - maxVisiblePages + 1);
+    }
+    
+    if (startPage > 1) {
+        paginationHTML += `<button class="pagination-btn" onclick="goToPage(1)" style="padding: 8px 12px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary); border-radius: 6px; cursor: pointer; transition: all 0.2s ease;">1</button>`;
+        if (startPage > 2) {
+            paginationHTML += `<span style="padding: 8px 4px; color: var(--text-secondary);">...</span>`;
+        }
+    }
+    
+    for (let i = startPage; i <= endPage; i++) {
+        paginationHTML += `
+            <button class="pagination-btn" onclick="goToPage(${i})" ${i === currentPage ? 'style="padding: 8px 12px; border: 1px solid var(--primary-color); background: var(--primary-color); color: white; border-radius: 6px; cursor: pointer; font-weight: 600;"' : 'style="padding: 8px 12px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary); border-radius: 6px; cursor: pointer; transition: all 0.2s ease;"'}>
+                ${i}
+            </button>
+        `;
+    }
+    
+    if (endPage < totalPages) {
+        if (endPage < totalPages - 1) {
+            paginationHTML += `<span style="padding: 8px 4px; color: var(--text-secondary);">...</span>`;
+        }
+        paginationHTML += `<button class="pagination-btn" onclick="goToPage(${totalPages})" style="padding: 8px 12px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary); border-radius: 6px; cursor: pointer; transition: all 0.2s ease;">${totalPages}</button>`;
+    }
+    
+    // Next button
+    paginationHTML += `
+        <button class="pagination-btn" onclick="goToPage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''} style="padding: 8px 16px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary); border-radius: 6px; cursor: pointer; transition: all 0.2s ease; ${currentPage === totalPages ? 'opacity: 0.5; cursor: not-allowed;' : ''}">
+            Next
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+        </button>
+    `;
+    
+    paginationHTML += `</div>`;
+    paginationContainer.innerHTML = paginationHTML;
+}
+
+// Navigate to specific page
+function goToPage(page) {
+    const totalPages = Math.ceil(filteredChangesets.length / itemsPerPage);
+    if (page < 1 || page > totalPages) return;
+    
+    currentPage = page;
+    updateChangesetsList(filteredChangesets);
+    
+    // Scroll to top of changesets list
+    const container = document.getElementById('changesetsList');
+    if (container) {
+        container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
 }
 
 // Update contributors list
@@ -1235,6 +1452,9 @@ function filterToChangeset(changesetId) {
     updateMap([targetChangeset]);
     
     // Update changesets list to show only this changeset
+    // Reset pagination when filtering to a specific changeset
+    currentPage = 1;
+    filteredChangesets = [targetChangeset];
     updateChangesetsList([targetChangeset]);
     
     // Zoom to changeset bbox if available
@@ -1727,6 +1947,13 @@ function initTabs() {
                         initAtlasBubble();
                     }, 100);
                 }
+            } else if (targetTabId === 'settings') {
+                // Initialize settings page when tab is shown
+                if (typeof initSettingsPage === 'function') {
+                    setTimeout(() => {
+                        initSettingsPage();
+                    }, 100);
+                }
             }
         });
     });
@@ -1860,11 +2087,18 @@ function isRoutingElementJS(elem) {
         return false;
     }
     
-    // Check for highway tag
+    // Excluded highway values (foot paths and cycleways)
+    const excludedHighwayValues = ['footway', 'path', 'pedestrian', 'steps', 'bridleway', 'cycleway'];
+    
+    // Check for highway tag and exclude foot paths
     const tags = elem.querySelectorAll('tag');
     for (const tag of tags) {
         if (tag.getAttribute('k') === 'highway') {
-            return true;
+            const highwayValue = (tag.getAttribute('v') || '').toLowerCase();
+            // Exclude foot paths
+            if (!excludedHighwayValues.includes(highwayValue)) {
+                return true;
+            }
         }
     }
     return false;
@@ -2207,11 +2441,6 @@ async function showChangesetComparison(changesetId) {
         document.getElementById('sideByMapsView').style.display = 'none';
         document.getElementById('diffView').style.display = 'none';
         document.getElementById('timelineView').style.display = 'none';
-        document.getElementById('analysisView').style.display = 'none';
-        // Reset analysis content
-        document.getElementById('comparisonAnalysisText').textContent = '';
-        document.getElementById('comparisonAnalysisLoading').style.display = 'flex';
-        document.getElementById('comparisonAnalysisContent').style.display = 'none';
         
         // Start progress
         updateComparisonProgress(10, 'Loading changeset...', 'Fetching changeset data from OpenStreetMap API');
@@ -2750,12 +2979,6 @@ function switchComparisonView(view) {
         document.getElementById('diffView').style.display = 'block';
     } else if (view === 'timeline') {
         document.getElementById('timelineView').style.display = 'block';
-    } else if (view === 'analysis') {
-        document.getElementById('analysisView').style.display = 'block';
-        // Load analysis if not already loaded
-        if (comparisonData && !document.getElementById('comparisonAnalysisText').textContent.trim()) {
-            loadComparisonAnalysis();
-        }
     }
 }
 
@@ -2805,62 +3028,5 @@ function closeComparisonModal() {
     }
 }
 
-// Load comparison analysis from Atlas AI
-async function loadComparisonAnalysis() {
-    if (!comparisonData) {
-        console.error('No comparison data available');
-        return;
-    }
-    
-    const changesetId = document.getElementById('comparisonChangesetId').textContent.replace('#', '');
-    const loadingEl = document.getElementById('comparisonAnalysisLoading');
-    const contentEl = document.getElementById('comparisonAnalysisContent');
-    const textEl = document.getElementById('comparisonAnalysisText');
-    
-    try {
-        loadingEl.style.display = 'flex';
-        contentEl.style.display = 'none';
-        
-        // Fetch analysis from backend
-        const response = await fetch(`/api/changeset/${changesetId}/analysis`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                comparison_data: comparisonData
-            })
-        });
-        
-        if (!response.ok) {
-            throw new Error('Failed to fetch analysis');
-        }
-        
-        const data = await response.json();
-        
-        // Hide loading, show content
-        loadingEl.style.display = 'none';
-        contentEl.style.display = 'block';
-        
-        // Parse markdown and display
-        if (typeof marked !== 'undefined') {
-            marked.setOptions({
-                breaks: true,
-                gfm: true,
-                sanitize: false
-            });
-            textEl.innerHTML = marked.parse(data.analysis);
-        } else {
-            // Fallback to plain text if marked is not available
-            textEl.textContent = data.analysis;
-        }
-        
-    } catch (error) {
-        console.error('Error loading analysis:', error);
-        loadingEl.style.display = 'none';
-        contentEl.style.display = 'block';
-        textEl.innerHTML = '<p style="color: #dc2626;">Failed to load analysis. Please try again.</p>';
-    }
-}
 
 

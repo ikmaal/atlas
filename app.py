@@ -173,12 +173,23 @@ if alerted_changesets:
 
 def send_slack_notification(changeset):
     """Send Slack notification for needs_review changesets"""
-    if not SLACK_WEBHOOK_URL or not SLACK_ALERTS_ENABLED:
-        if not SLACK_WEBHOOK_URL:
-            print("WARNING: Slack webhook URL not configured")
-        if not SLACK_ALERTS_ENABLED:
-            print("WARNING: Slack alerts not enabled")
+    # Get Slack settings from saved settings (preferred) or environment variables (fallback)
+    settings = load_settings()
+    slack_settings = settings.get('slack', {})
+    
+    # Get webhook URL from settings first, then fall back to environment variable
+    webhook_url = slack_settings.get('webhook_url', '') or SLACK_WEBHOOK_URL
+    slack_enabled = slack_settings.get('enabled', False) or SLACK_ALERTS_ENABLED
+    
+    if not webhook_url or not slack_enabled:
+        if not webhook_url:
+            print("WARNING: Slack webhook URL not configured in settings or environment")
+        if not slack_enabled:
+            print("WARNING: Slack alerts not enabled in settings or environment")
         return False
+    
+    # Detect if using Slack Workflow (workflow URLs contain '/triggers/')
+    is_workflow = '/triggers/' in webhook_url if webhook_url else False
     
     cs_id = changeset.get('id')
     if not cs_id:
@@ -217,22 +228,32 @@ def send_slack_notification(changeset):
         total_changes = created_count + modified_count + deleted_count
         
         reasons = validation.get('reasons', [])
-        reason_text = '\n'.join([f'• {reason}' for reason in reasons]) if reasons else 'Mass deletion detected'
+        reason_text = '\n'.join([f'• {reason}' for reason in reasons]) if reasons else 'Mass changes detected'
         
-        # Check if this is a mass deletion or ERP changeset
+        # Check if this is a mass changes, ERP, oneway, or access tag changeset
         flags = validation.get('flags', [])
-        is_mass_deletion = 'mass_deletion' in flags
+        is_mass_changes = 'mass_changes' in flags
+        is_mass_deletion = 'mass_deletion' in flags  # Backward compatibility
         is_erp = 'erp' in flags
+        is_oneway = 'oneway' in flags
+        is_access = 'access' in flags
         
         # Build OSM links
         osm_link = f"https://www.openstreetmap.org/changeset/{cs_id}"
         osmcha_link = f"https://osmcha.org/changesets/{cs_id}"
-        atlas_comparison_link = f"{ATLAS_BASE_URL}/?changeset={cs_id}"
+        # URL to open comparison tool directly - uses comparison parameter to trigger modal
+        atlas_comparison_link = f"{ATLAS_BASE_URL}/?comparison={cs_id}"
         
         # Determine header text based on changeset type
-        if is_mass_deletion:
-            header_text = "Mass Deletion Changeset Detected"
-            status_text = "Mass Deletion Detected"
+        if is_oneway:
+            header_text = "One-Way Edit Changeset Detected"
+            status_text = "One-Way Edit Detected"
+        elif is_access:
+            header_text = "Access Tag Edit Changeset Detected"
+            status_text = "Access Tag Edit Detected"
+        elif is_mass_changes or is_mass_deletion:
+            header_text = "Mass Changes Changeset Detected"
+            status_text = "Mass Changes Detected"
         elif is_erp:
             header_text = "ERP Changeset Detected"
             status_text = "ERP Detected"
@@ -241,15 +262,19 @@ def send_slack_notification(changeset):
             status_text = "Needs Review"
         
         # Determine warning_flags message based on changeset type
-        if is_mass_deletion:
-            warning_flags_text = "Mass Deletion Changeset Detected"
+        if is_oneway:
+            warning_flags_text = "One-Way Edit Changeset Detected"
+        elif is_access:
+            warning_flags_text = "Access Tag Edit Changeset Detected"
+        elif is_mass_changes or is_mass_deletion:
+            warning_flags_text = "Mass Changes Changeset Detected"
         elif is_erp:
             warning_flags_text = "ERP Modification Changeset Detected"
         else:
             warning_flags_text = reason_text if reasons else "Needs review"
         
         # Check if using Slack Workflow (different format required)
-        if SLACK_IS_WORKFLOW:
+        if is_workflow:
             # Slack Workflow format - simple key-value pairs
             slack_message = {
                 "changeset_id": str(cs_id),
@@ -381,7 +406,7 @@ def send_slack_notification(changeset):
         # Send to Slack
         try:
             response = requests.post(
-                SLACK_WEBHOOK_URL, 
+                webhook_url, 
                 json=slack_message, 
                 timeout=10,
                 verify=True  # SSL verification
@@ -400,11 +425,11 @@ def send_slack_notification(changeset):
                 
         except requests.exceptions.ConnectionError as e:
             print(f"ERROR: Connection Error: Unable to connect to Slack webhook")
-            print(f"   Webhook URL: {SLACK_WEBHOOK_URL[:50]}...")
+            print(f"   Webhook URL: {webhook_url[:50] if webhook_url else 'Not configured'}...")
             print(f"   Error details: {str(e)}")
             print(f"   Possible causes:")
             print(f"   - Check your internet connection")
-            print(f"   - Verify the webhook URL is correct")
+            print(f"   - Verify the webhook URL is correct in settings")
             print(f"   - Check if firewall is blocking HTTPS requests")
             print(f"   - Ensure Slack webhook URL is still valid")
             alerted_changesets.discard(cs_id_str)
@@ -610,15 +635,7 @@ if GOOGLE_SHEETS_ENABLED:
 else:
     print("Google Sheets: DISABLED (google_credentials.json not found)")
 
-# Print Slack notifications status on startup
-if SLACK_ALERTS_ENABLED and SLACK_WEBHOOK_URL:
-    print("Slack Notifications: ENABLED")
-    print(f"   Webhook URL configured: {SLACK_WEBHOOK_URL[:30]}...")
-elif SLACK_ALERTS_ENABLED and not SLACK_WEBHOOK_URL:
-    print("Slack Notifications: ENABLED but no webhook URL configured")
-    print("   Set SLACK_WEBHOOK_URL environment variable to enable")
-else:
-    print("Slack Notifications: DISABLED (set SLACK_ALERTS_ENABLED=true to enable)")
+# Slack notifications status will be printed after load_settings() is defined
 
 @app.route('/api/cache/clear')
 def clear_cache():
@@ -632,24 +649,22 @@ def clear_cache():
 @app.route('/api/test/slack', methods=['POST'])
 def test_slack_notification():
     """Test endpoint to send a test Slack notification"""
-    if not SLACK_ALERTS_ENABLED:
+    data = request.get_json() or {}
+    webhook_url = data.get('webhook_url', '') or SLACK_WEBHOOK_URL
+    
+    if not webhook_url:
         return jsonify({
             'success': False,
-            'error': 'Slack notifications not enabled. Set SLACK_ALERTS_ENABLED=true'
+            'error': 'Webhook URL is required. Please provide a webhook URL.'
         }), 400
     
-    if not SLACK_WEBHOOK_URL:
+    # Validate webhook URL format (accept both hooks.slack.com and workflows)
+    if not (webhook_url.startswith('https://hooks.slack.com/') or 
+            webhook_url.startswith('https://hooks.slack.com/services/') or
+            '/triggers/' in webhook_url):
         return jsonify({
             'success': False,
-            'error': 'SLACK_WEBHOOK_URL not configured. Set it as an environment variable.'
-        }), 400
-    
-    # Validate webhook URL format
-    if not SLACK_WEBHOOK_URL.startswith('https://hooks.slack.com/services/'):
-        return jsonify({
-            'success': False,
-            'error': f'Invalid webhook URL format. Should start with https://hooks.slack.com/services/',
-            'current_url': SLACK_WEBHOOK_URL[:50] + '...' if len(SLACK_WEBHOOK_URL) > 50 else SLACK_WEBHOOK_URL
+            'error': 'Invalid webhook URL format. Should be a valid Slack webhook URL.'
         }), 400
     
     # Test basic connectivity first
@@ -678,7 +693,7 @@ def test_slack_notification():
         'created_at': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC'),
         'validation': {
             'status': 'needs_review',
-            'reasons': ['Mass deletion detected: 75 deletions', 'Test notification']
+            'reasons': ['Mass changes detected: 10 additions, 15 modifications, 75 deletions (total: 100 elements)', 'Test notification']
         },
         'details': {
             'total_created': 10,
@@ -694,23 +709,110 @@ def test_slack_notification():
     # Temporarily remove from alerted set to allow test
     alerted_changesets.discard('999999999')
     
-    # Send test notification
-    result = send_slack_notification(test_changeset)
-    
-    if result:
+    # Send test notification with custom webhook URL
+    try:
+        # Check if using Slack Workflow
+        is_workflow = '/triggers/' in webhook_url
+        
+        if is_workflow:
+            # Slack Workflow format
+            slack_message = {
+                "changeset_id": "999999999",
+                "user": "TestUser",
+                "total_changes": "100",
+                "created": "10",
+                "modified": "15",
+                "deleted": "75",
+                "warning_flags": "Test notification - Mass changes detected: 10 additions, 15 modifications, 75 deletions (total: 100 elements)",
+                "comment": "This is a test changeset for Slack notification testing",
+                "source": "test",
+                "created_at": datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC'),
+                "osm_link": "https://www.openstreetmap.org/changeset/999999999",
+                "osmcha_link": "https://osmcha.org/changesets/999999999",
+                "status": "Test Notification"
+            }
+        else:
+            # Regular webhook format - Block Kit
+            slack_message = {
+                "blocks": [
+                    {
+                        "type": "header",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "🧪 Test Notification - Changeset Needs Review"
+                        }
+                    },
+                    {
+                        "type": "section",
+                        "fields": [
+                            {"type": "mrkdwn", "text": f"*Changeset ID:*\n999999999"},
+                            {"type": "mrkdwn", "text": f"*User:*\nTestUser"},
+                            {"type": "mrkdwn", "text": f"*Status:*\n🔍 Needs Review"},
+                            {"type": "mrkdwn", "text": f"*Total Changes:*\n100"}
+                        ]
+                    },
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": "*Changes:*\n• Created: 10\n• Modified: 15\n• Deleted: 75"
+                        }
+                    },
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": "*Reason:*\nTest notification - Mass changes detected: 10 additions, 15 modifications, 75 deletions (total: 100 elements)"
+                        }
+                    },
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": "*Comment:*\nThis is a test changeset for Slack notification testing"
+                        }
+                    },
+                    {
+                        "type": "actions",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {"type": "plain_text", "text": "View on OSM"},
+                                "url": "https://www.openstreetmap.org/changeset/999999999"
+                            },
+                            {
+                                "type": "button",
+                                "text": {"type": "plain_text", "text": "View on OSMCha"},
+                                "url": "https://osmcha.org/changesets/999999999"
+                            }
+                        ]
+                    }
+                ]
+            }
+        
+        # Send to custom webhook URL
+        response = requests.post(webhook_url, json=slack_message, timeout=10)
+        response.raise_for_status()
+        
         return jsonify({
             'success': True,
             'message': 'Test Slack notification sent successfully! Check your Slack channel.'
         })
-    else:
+    except requests.exceptions.RequestException as e:
         return jsonify({
             'success': False,
-            'error': 'Failed to send test notification. Check server logs for details.'
+            'error': f'Failed to send test notification: {str(e)}'
+        }), 500
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Error: {str(e)}'
         }), 500
 
 # Validation thresholds for changesets needing review
+# This will be updated from settings on startup and when settings are saved
 VALIDATION_THRESHOLDS = {
-    'mass_deletion_threshold': 50,  # 50+ deletions triggers "needs review"
+    'mass_changes_threshold': 50,  # Default: 50+ total changes (created + modified + deleted) triggers "needs review"
 }
 
 def is_changeset_in_region(changeset, region_id=None):
@@ -808,6 +910,129 @@ def check_changeset_has_erp(changeset_id):
         erp_cache[changeset_id] = (False, 0)
         return False, 0
 
+def check_changeset_has_oneway(changeset_id):
+    """
+    Check if a changeset contains any one-way edits
+    Returns: (has_oneway: bool, count: int)
+    """
+    # Check cache first
+    cache_key = f'oneway_{changeset_id}'
+    if cache_key in erp_cache:
+        cached_result = erp_cache[cache_key]
+        return cached_result
+    
+    try:
+        url = f"https://api.openstreetmap.org/api/0.6/changeset/{changeset_id}/download"
+        headers = {'User-Agent': 'ATLAS-Singapore/1.0'}
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        root = ET.fromstring(response.content)
+        oneway_count = 0
+        
+        # Check all actions (create, modify, delete)
+        for action in ['create', 'modify', 'delete']:
+            action_elems = root.findall(action)
+            for action_elem in action_elems:
+                # Check ways (roads) for oneway tags
+                ways = action_elem.findall('way')
+                for way in ways:
+                    # Only check routing elements (roads)
+                    if not is_routing_element(way):
+                        continue
+                    
+                    # Check for oneway tag
+                    for tag in way.findall('tag'):
+                        if tag.get('k') == 'oneway':
+                            oneway_value = tag.get('v', '').lower()
+                            # oneway can be 'yes', 'no', '1', '-1', 'reversible', etc.
+                            if oneway_value in ['yes', '1', '-1', 'true']:
+                                oneway_count += 1
+                                break
+        
+        has_oneway = oneway_count > 0
+        result = (has_oneway, oneway_count)
+        erp_cache[cache_key] = result
+        return result
+        
+    except Exception as e:
+        print(f"Error checking oneway for changeset {changeset_id}: {e}")
+        # Cache negative result to avoid retrying failed requests
+        erp_cache[cache_key] = (False, 0)
+        return False, 0
+
+def check_changeset_has_access_tags(changeset_id):
+    """
+    Check if a changeset contains any access tag edits
+    Returns: (has_access_tags: bool, count: int)
+    """
+    # Check cache first
+    cache_key = f'access_{changeset_id}'
+    if cache_key in erp_cache:
+        cached_result = erp_cache[cache_key]
+        return cached_result
+    
+    try:
+        url = f"https://api.openstreetmap.org/api/0.6/changeset/{changeset_id}/download"
+        headers = {'User-Agent': 'ATLAS-Singapore/1.0'}
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        root = ET.fromstring(response.content)
+        access_count = 0
+        
+        # List of access-related tags to check
+        access_tags = [
+            'access', 'vehicle', 'motor_vehicle', 'motorcar', 'motorcycle', 'moped',
+            'bicycle', 'foot', 'pedestrian', 'horse', 'bus', 'taxi', 'hgv', 'psv',
+            'emergency', 'delivery', 'agricultural', 'forestry', 'destination',
+            'hov', 'caravan', 'car', 'truck', 'motorcycle', 'moped', 'mofa',
+            'motorcycle:sidecar', 'motor_vehicle:conditional', 'vehicle:conditional',
+            'bicycle:conditional', 'foot:conditional', 'access:conditional'
+        ]
+        
+        # Check all actions (create, modify, delete)
+        for action in ['create', 'modify', 'delete']:
+            action_elems = root.findall(action)
+            for action_elem in action_elems:
+                # Check ways (roads) for access tags
+                ways = action_elem.findall('way')
+                for way in ways:
+                    # Only check routing elements (roads)
+                    if not is_routing_element(way):
+                        continue
+                    
+                    # Check for any access-related tags
+                    for tag in way.findall('tag'):
+                        tag_key = tag.get('k', '').lower()
+                        # Check if this is an access-related tag
+                        if tag_key in access_tags:
+                            access_count += 1
+                            break
+        
+        has_access_tags = access_count > 0
+        result = (has_access_tags, access_count)
+        erp_cache[cache_key] = result
+        return result
+        
+    except Exception as e:
+        print(f"Error checking access tags for changeset {changeset_id}: {e}")
+        # Cache negative result to avoid retrying failed requests
+        erp_cache[cache_key] = (False, 0)
+        return False, 0
+
+def get_validation_criteria():
+    """Get enabled validation criteria from settings"""
+    settings = load_settings()
+    criteria = settings.get('validation', {}).get('criteria', {})
+    # Default to True if not specified (backward compatibility)
+    return {
+        'mass_changes': criteria.get('mass_changes', True),
+        'erp': criteria.get('erp', True),
+        'oneway': criteria.get('oneway', True),
+        'access': criteria.get('access', True)
+    }
+
 def validate_changeset(changeset):
     """
     Validate a changeset to detect patterns needing review
@@ -819,54 +1044,116 @@ def validate_changeset(changeset):
         'flags': []
     }
     
+    # Check if user is in trusted users list
+    user = changeset.get('user', '')
+    if user:
+        settings = load_settings()
+        trusted_users = settings.get('trusted_users', [])
+        if user in trusted_users:
+            # Return early with valid status - trusted users don't need review
+            return validation
+    
+    # Exclude changesets from usernames containing "GrabSG"
+    if user and 'GrabSG' in user:
+        # Return early with valid status - no review needed
+        return validation
+    
+    # Get enabled criteria from settings
+    criteria = get_validation_criteria()
+    
     details = changeset.get('details', {})
     
-    if details:
-        total_deleted = details.get('total_deleted', 0)
-        
-        # Check for mass deletions (50+ deletions)
-        if total_deleted >= VALIDATION_THRESHOLDS['mass_deletion_threshold']:
-            validation['status'] = 'needs_review'
-            validation['reasons'].append(f'Mass deletion detected: {total_deleted} deletions')
-            validation['flags'].append('mass_deletion')
+    # Check for mass changes (if enabled)
+    if criteria.get('mass_changes', True):
+        if details:
+            total_created = details.get('total_created', 0)
+            total_modified = details.get('total_modified', 0)
+            total_deleted = details.get('total_deleted', 0)
+            total_changes = total_created + total_modified + total_deleted
+            
+            # Get current threshold from settings
+            threshold = get_validation_threshold()
+            
+            # Check for mass changes (additions, modifications, or deletions)
+            if total_changes >= threshold:
+                validation['status'] = 'needs_review'
+                change_parts = []
+                if total_created > 0:
+                    change_parts.append(f'{total_created} additions')
+                if total_modified > 0:
+                    change_parts.append(f'{total_modified} modifications')
+                if total_deleted > 0:
+                    change_parts.append(f'{total_deleted} deletions')
+                change_summary = ', '.join(change_parts) if change_parts else 'no changes'
+                validation['reasons'].append(f'Mass changes detected: {change_summary} (total: {total_changes} elements)')
+                validation['flags'].append('mass_changes')
     
-    # Check for name=ERP modifications
+    # Check for various patterns that need review
     cs_id = changeset.get('id')
     if cs_id:
-        has_erp, erp_count = check_changeset_has_erp(cs_id)
-        if has_erp:
-            validation['status'] = 'needs_review'
-            validation['reasons'].append(f'ERP modification detected: {erp_count} ERP element(s) modified')
-            validation['flags'].append('erp')
+        # Check for name=ERP modifications (if enabled)
+        if criteria.get('erp', True):
+            has_erp, erp_count = check_changeset_has_erp(cs_id)
+            if has_erp:
+                validation['status'] = 'needs_review'
+                validation['reasons'].append(f'ERP modification detected: {erp_count} ERP element(s) modified')
+                validation['flags'].append('erp')
+        
+        # Check for one-way edits (if enabled)
+        if criteria.get('oneway', True):
+            has_oneway, oneway_count = check_changeset_has_oneway(cs_id)
+            if has_oneway:
+                validation['status'] = 'needs_review'
+                validation['reasons'].append(f'One-way edit detected: {oneway_count} one-way element(s)')
+                validation['flags'].append('oneway')
+        
+        # Check for access tag edits (if enabled)
+        if criteria.get('access', True):
+            has_access, access_count = check_changeset_has_access_tags(cs_id)
+            if has_access:
+                validation['status'] = 'needs_review'
+                validation['reasons'].append(f'Access tag edit detected: {access_count} element(s) with access tags')
+                validation['flags'].append('access')
     
     return validation
 
 def is_routing_element(elem_or_dict):
     """
     Check if an OSM element affects routing (is a road).
-    Roads are ways with a highway tag.
+    Roads are ways with a highway tag, excluding foot paths.
     
     Args:
         elem_or_dict: Either an XML ElementTree element or a parsed element dict
     
     Returns:
-        bool: True if the element is a road (way with highway tag)
+        bool: True if the element is a road (way with highway tag, excluding foot paths)
     """
+    # Excluded highway values (foot paths and cycleways)
+    excluded_highway_values = {'footway', 'path', 'pedestrian', 'steps', 'bridleway', 'cycleway'}
+    
     # Handle XML element
     if hasattr(elem_or_dict, 'tag'):  # XML element
         if elem_or_dict.tag != 'way':
             return False
-        # Check for highway tag
+        # Check for highway tag and exclude foot paths
         for tag in elem_or_dict.findall('tag'):
             if tag.get('k') == 'highway':
-                return True
+                highway_value = tag.get('v', '').lower()
+                # Exclude foot paths
+                if highway_value not in excluded_highway_values:
+                    return True
         return False
     # Handle parsed dict
     elif isinstance(elem_or_dict, dict):
         if elem_or_dict.get('type') != 'way':
             return False
         tags = elem_or_dict.get('tags', {})
-        return 'highway' in tags
+        if 'highway' in tags:
+            highway_value = str(tags.get('highway', '')).lower()
+            # Exclude foot paths
+            if highway_value not in excluded_highway_values:
+                return True
+        return False
     return False
 
 def fetch_changeset_details(changeset_id):
@@ -924,7 +1211,7 @@ def fetch_changeset_details(changeset_id):
         print(f"Error fetching details for changeset {changeset_id}: {e}")
         return None
 
-def fetch_osm_changesets(bbox=None, limit=200, region=None):
+def fetch_osm_changesets(bbox=None, limit=200, region=None, time_range_hours=None):
     """
     Fetch changesets from OpenStreetMap API for a given bounding box.
     Uses optimized parallel fetching for speed.
@@ -933,6 +1220,7 @@ def fetch_osm_changesets(bbox=None, limit=200, region=None):
         bbox: Bounding box string (defaults to current region's bbox)
         limit: Maximum number of changesets to return
         region: Region ID to filter by (defaults to current region)
+        time_range_hours: Hours to look back (defaults to CHANGESET_TIME_RANGE_HOURS, use None for all history)
     """
     # Use provided region, or fall back to current region
     region = region or CURRENT_REGION
@@ -958,13 +1246,19 @@ def fetch_osm_changesets(bbox=None, limit=200, region=None):
         
         # Start from now and go backwards (configurable time range)
         current_end = datetime.now(timezone.utc)
-        start_time = current_end - timedelta(hours=CHANGESET_TIME_RANGE_HOURS)
+        # Use provided time_range_hours, or default to CHANGESET_TIME_RANGE_HOURS
+        # If time_range_hours is None, don't set a start_time (fetch all history)
+        hours_to_fetch = time_range_hours if time_range_hours is not None else CHANGESET_TIME_RANGE_HOURS
+        start_time = current_end - timedelta(hours=hours_to_fetch) if hours_to_fetch else None
         
         # We'll make multiple requests, each time using the oldest changeset from the previous batch
         # as the end time for the next batch (pagination backwards in time)
         max_requests = (limit + 99) // 100  # Max requests needed to reach desired limit
         
-        print(f"Fetching up to {limit} changesets from last {CHANGESET_TIME_RANGE_HOURS} hours (max {max_requests} API calls)...")
+        if hours_to_fetch:
+            print(f"Fetching up to {limit} changesets from last {hours_to_fetch} hours (max {max_requests} API calls)...")
+        else:
+            print(f"Fetching up to {limit} changesets from all history (max {max_requests} API calls)...")
         
         for request_num in range(max_requests):
             # Stop if we already have enough changesets that pass the region filter
@@ -1048,9 +1342,9 @@ def fetch_osm_changesets(bbox=None, limit=200, region=None):
                 # This ensures we continue backwards in time without gaps
                 current_end = date_parser.parse(oldest_in_batch) - timedelta(seconds=1)
                 
-                # If we've gone back too far, stop
-                if current_end <= start_time:
-                    print(f"  Reached time limit (365 days ago), stopping")
+                # If we've gone back too far, stop (unless fetching all history)
+                if start_time and current_end <= start_time:
+                    print(f"  Reached time limit, stopping")
                     break
                 
             except Exception as e:
@@ -1124,23 +1418,27 @@ def fetch_osm_changesets(bbox=None, limit=200, region=None):
         for cs in changesets:
             cs['validation'] = validate_changeset(cs)
             
-            # Add "mass_deletion" tag for needs_review changesets with 50+ deletions
+            # Add "mass_changes" tag for needs_review changesets with threshold+ total changes
             if cs['validation'].get('status') == 'needs_review':
                 details = cs.get('details', {})
+                total_created = details.get('total_created', 0)
+                total_modified = details.get('total_modified', 0)
                 total_deleted = details.get('total_deleted', 0)
+                total_changes = total_created + total_modified + total_deleted
                 
-                if total_deleted >= 50:
+                threshold = get_validation_threshold()
+                if total_changes >= threshold:
                     # Ensure tags dictionary exists
                     if 'tags' not in cs:
                         cs['tags'] = {}
                     
-                    # Add mass_deletion tag
-                    cs['tags']['mass_deletion'] = 'yes'
+                    # Add mass_changes tag
+                    cs['tags']['mass_changes'] = 'yes'
+                    cs['tags']['total_changes'] = str(total_changes)
+                    cs['tags']['created_count'] = str(total_created)
+                    cs['tags']['modified_count'] = str(total_modified)
                     cs['tags']['deleted_count'] = str(total_deleted)
-                    print(f"Added mass_deletion tag to changeset {cs.get('id')} ({total_deleted} deletions)")
-                elif total_deleted > 0:
-                    # Debug: log if needs_review but less than 50 deletions (shouldn't happen)
-                    print(f"WARNING: Changeset {cs.get('id')} marked needs_review but only has {total_deleted} deletions")
+                    print(f"Added mass_changes tag to changeset {cs.get('id')} ({total_changes} total changes: {total_created} created, {total_modified} modified, {total_deleted} deleted)")
         
         # Check if this is the initial load (no previously alerted changesets)
         initial_load = len(alerted_changesets) == 0
@@ -2125,7 +2423,7 @@ def get_stats():
 def get_analytics():
     """API endpoint to get analytics data for charts"""
     try:
-        # Fixed to 24 hours
+        # Fixed to 24 hours for regular analytics
         hours = 24
         region_id = request.args.get('region', 'singapore')
         
@@ -2143,7 +2441,7 @@ def get_analytics():
         # Hourly buckets for 24h range
         bucket_hours = 1
         
-        # Group by time buckets for timeline
+        # Group by time buckets for timeline (24h data)
         timeline_data = {}
         
         for cs in changesets:
@@ -2164,6 +2462,57 @@ def get_analytics():
             timeline_data[bucket_key]['created'] += details.get('total_created', 0)
             timeline_data[bucket_key]['modified'] += details.get('total_modified', 0)
             timeline_data[bucket_key]['deleted'] += details.get('total_deleted', 0)
+        
+        # Fetch all historical changesets for criteria trends (from beginning)
+        print(f"Fetching all historical changesets for criteria trends (region: {region_id})...")
+        # Fetch with higher limit and no time restriction (None = all history)
+        historical_changesets = fetch_osm_changesets(region=region_id, limit=10000, time_range_hours=None)
+        print(f"Found {len(historical_changesets)} historical changesets for criteria trends")
+        
+        # Ensure all historical changesets have validation
+        for cs in historical_changesets:
+            if 'validation' not in cs or not cs.get('validation') or not isinstance(cs.get('validation'), dict):
+                cs['validation'] = validate_changeset(cs)
+        
+        # Group historical changesets by daily buckets for criteria trends
+        criteria_timeline_data = {}
+        
+        for cs in historical_changesets:
+            created_at = date_parser.parse(cs['created_at'])
+            # Round down to start of day (daily buckets)
+            bucket = created_at.replace(hour=0, minute=0, second=0, microsecond=0)
+            bucket_key = bucket.strftime('%Y-%m-%d')
+            
+            if bucket_key not in criteria_timeline_data:
+                criteria_timeline_data[bucket_key] = {
+                    'mass_changes': 0,
+                    'erp': 0,
+                    'oneway': 0,
+                    'access': 0
+                }
+            
+            # Track criteria flags over time
+            validation = cs.get('validation', {})
+            flags = validation.get('flags', [])
+            if 'mass_changes' in flags:
+                criteria_timeline_data[bucket_key]['mass_changes'] += 1
+            if 'erp' in flags:
+                criteria_timeline_data[bucket_key]['erp'] += 1
+            if 'oneway' in flags:
+                criteria_timeline_data[bucket_key]['oneway'] += 1
+            if 'access' in flags:
+                criteria_timeline_data[bucket_key]['access'] += 1
+        
+        # Sort criteria timeline by date
+        sorted_criteria_timeline = sorted(criteria_timeline_data.items())
+        
+        # Format criteria timeline labels (daily format)
+        criteria_formatted_labels = []
+        for label, _ in sorted_criteria_timeline:
+            dt = datetime.strptime(label, '%Y-%m-%d')
+            # Format as "MM/DD/YY" for better readability on chart with long time periods
+            # Use abbreviated format to fit more dates on x-axis
+            criteria_formatted_labels.append(dt.strftime('%m/%d/%y'))
         
         # Sort timeline by date
         sorted_timeline = sorted(timeline_data.items())
@@ -2279,6 +2628,13 @@ def get_analytics():
                 'created': [data['created'] for _, data in sorted_timeline],
                 'modified': [data['modified'] for _, data in sorted_timeline],
                 'deleted': [data['deleted'] for _, data in sorted_timeline]
+            },
+            'criteriaTrends': {
+                'labels': criteria_formatted_labels if 'criteria_formatted_labels' in locals() else [],
+                'mass_changes': [data.get('mass_changes', 0) for _, data in sorted_criteria_timeline] if 'sorted_criteria_timeline' in locals() else [],
+                'erp': [data.get('erp', 0) for _, data in sorted_criteria_timeline] if 'sorted_criteria_timeline' in locals() else [],
+                'oneway': [data.get('oneway', 0) for _, data in sorted_criteria_timeline] if 'sorted_criteria_timeline' in locals() else [],
+                'access': [data.get('access', 0) for _, data in sorted_criteria_timeline] if 'sorted_criteria_timeline' in locals() else []
             },
             'editType': {
                 'created': total_created,
@@ -2493,20 +2849,27 @@ def get_user_region_stats(username):
         for cs in changesets:
             cs['validation'] = validate_changeset(cs)
             
-            # Add "mass_deletion" tag for needs_review changesets with 50+ deletions
+            # Add "mass_changes" tag for needs_review changesets with threshold+ total changes
             if cs['validation'].get('status') == 'needs_review':
                 details = cs.get('details', {})
+                total_created = details.get('total_created', 0)
+                total_modified = details.get('total_modified', 0)
                 total_deleted = details.get('total_deleted', 0)
+                total_changes = total_created + total_modified + total_deleted
                 
-                if total_deleted >= 50:
+                threshold = get_validation_threshold()
+                if total_changes >= threshold:
                     # Ensure tags dictionary exists
                     if 'tags' not in cs:
                         cs['tags'] = {}
                     
-                    # Add mass_deletion tag
-                    cs['tags']['mass_deletion'] = 'yes'
+                    # Add mass_changes tag
+                    cs['tags']['mass_changes'] = 'yes'
+                    cs['tags']['total_changes'] = str(total_changes)
+                    cs['tags']['created_count'] = str(total_created)
+                    cs['tags']['modified_count'] = str(total_modified)
                     cs['tags']['deleted_count'] = str(total_deleted)
-                    print(f"Added mass_deletion tag to changeset {cs.get('id')} ({total_deleted} deletions)")
+                    print(f"Added mass_changes tag to changeset {cs.get('id')} ({total_changes} total changes: {total_created} created, {total_modified} modified, {total_deleted} deleted)")
         
         # Also log to Google Sheets if validation status is 'needs_review' and Google Sheets enabled
         for cs in changesets:
@@ -3299,7 +3662,7 @@ I'll fetch the data from OSM and provide you with:
 
 **General tips for manual analysis:**
 1. Check the comparison tool in the dashboard
-2. Look for red flags (mass deletions, missing comments)
+2. Look for red flags (mass changes, missing comments)
 3. Review the user's edit history
 4. Use OSMCha for detailed validation
 
@@ -3312,7 +3675,7 @@ Just give me a changeset ID and I'll do the heavy lifting!"""
 **Valid** - No issues detected
 
 **Needs Review** - Triggered by:
-   - Mass deletions (50+ deletions)
+   - Mass changes (50+ total changes: additions, modifications, or deletions)
    - Requires manual review to ensure changes are appropriate
 
 Ask me to analyze a specific changeset for details!"""
@@ -3385,6 +3748,159 @@ What would you like to know more about?"""
         return generate_groq_text_response(message, context)
 
 
+# Settings file path
+SETTINGS_FILE = '.atlas_settings.json'
+
+def load_settings():
+    """Load settings from JSON file"""
+    default_settings = {
+        'validation': {
+            'mass_changes_threshold': 50,
+            'criteria': {
+                'mass_changes': True,
+                'erp': True,
+                'oneway': True,
+                'access': True
+            }
+        },
+        'slack': {
+            'enabled': False,
+            'webhook_url': ''
+        },
+        'trusted_users': ['kenken234']
+    }
+    
+    if os.path.exists(SETTINGS_FILE):
+        try:
+            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
+                user_settings = json.load(f)
+                # Merge with defaults to ensure all keys exist
+                settings = default_settings.copy()
+                settings.update(user_settings)
+                return settings
+        except Exception as e:
+            print(f"WARNING: Error loading settings: {e}")
+            return default_settings
+    return default_settings
+
+def save_settings(settings):
+    """Save settings to JSON file"""
+    try:
+        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(settings, f, indent=2)
+        return True
+    except Exception as e:
+        print(f"ERROR: Error saving settings: {e}")
+        return False
+
+def get_validation_threshold():
+    """Get the current validation threshold from settings or environment"""
+    settings = load_settings()
+    # Environment variable takes precedence if set (support both old and new names)
+    env_threshold = os.environ.get('MASS_CHANGES_THRESHOLD') or os.environ.get('MASS_DELETION_THRESHOLD')
+    if env_threshold:
+        try:
+            return int(env_threshold)
+        except ValueError:
+            pass
+    # Support both old and new setting names for backward compatibility
+    validation_settings = settings.get('validation', {})
+    return validation_settings.get('mass_changes_threshold') or validation_settings.get('mass_deletion_threshold', 50)
+
+@app.route('/api/settings', methods=['GET'])
+def get_settings():
+    """Get current settings"""
+    try:
+        settings = load_settings()
+        # Don't expose webhook URL in full for security
+        if settings.get('slack', {}).get('webhook_url'):
+            webhook = settings['slack']['webhook_url']
+            if len(webhook) > 20:
+                settings['slack']['webhook_url'] = webhook[:20] + '...' + webhook[-10:]
+        return jsonify(settings)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/settings', methods=['POST'])
+def save_settings_endpoint():
+    """Save settings"""
+    try:
+        data = request.get_json()
+        
+        # Validate input
+        if 'validation' in data:
+            # Support both old and new field names
+            threshold = data['validation'].get('mass_changes_threshold') or data['validation'].get('mass_deletion_threshold')
+            if threshold is not None:
+                try:
+                    threshold = int(threshold)
+                    if threshold < 1 or threshold > 1000:
+                        return jsonify({'error': 'Mass changes threshold must be between 1 and 1000'}), 400
+                except (ValueError, TypeError):
+                    return jsonify({'error': 'Invalid mass changes threshold value'}), 400
+            
+            # Validate criteria settings
+            if 'criteria' in data['validation']:
+                criteria = data['validation']['criteria']
+                if not isinstance(criteria, dict):
+                    return jsonify({'error': 'Criteria must be an object'}), 400
+                # Ensure all criteria values are boolean
+                for key, value in criteria.items():
+                    if not isinstance(value, bool):
+                        return jsonify({'error': f'Criterion {key} must be a boolean value'}), 400
+        
+        if 'slack' in data:
+            webhook_url = data['slack'].get('webhook_url', '')
+            if webhook_url and not webhook_url.startswith('https://'):
+                return jsonify({'error': 'Slack webhook URL must start with https://'}), 400
+        
+        # Load current settings and merge
+        current_settings = load_settings()
+        
+        # If old field name is provided, migrate to new name
+        if 'validation' in data and 'mass_deletion_threshold' in data['validation']:
+            if 'mass_changes_threshold' not in data['validation']:
+                data['validation']['mass_changes_threshold'] = data['validation']['mass_deletion_threshold']
+            # Remove old field name
+            del data['validation']['mass_deletion_threshold']
+        
+        # Deep merge for nested dictionaries (validation, slack)
+        if 'validation' in data:
+            if 'validation' not in current_settings:
+                current_settings['validation'] = {}
+            current_settings['validation'].update(data['validation'])
+            # Remove from data so it doesn't overwrite
+            del data['validation']
+        
+        if 'slack' in data:
+            if 'slack' not in current_settings:
+                current_settings['slack'] = {}
+            current_settings['slack'].update(data['slack'])
+            # Remove from data so it doesn't overwrite
+            del data['slack']
+        
+        # Update remaining top-level settings (like trusted_users)
+        # Only update if the key exists in data (preserve existing if not provided)
+        for key, value in data.items():
+            current_settings[key] = value
+        
+        # Save settings
+        if save_settings(current_settings):
+            # Update runtime validation threshold
+            global VALIDATION_THRESHOLDS
+            VALIDATION_THRESHOLDS['mass_changes_threshold'] = get_validation_threshold()
+            
+            return jsonify({
+                'success': True,
+                'message': 'Settings saved successfully',
+                'settings': current_settings
+            })
+        else:
+            return jsonify({'error': 'Failed to save settings'}), 500
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 # Health check endpoint for uptime monitoring
 @app.route('/api/health')
 def health_check():
@@ -3398,6 +3914,35 @@ def health_check():
 # Initialize JSON files with defaults if they don't exist
 def initialize_data_files():
     """Ensure JSON data files exist with default values"""
+    pass
+
+# Initialize validation threshold from settings on startup
+VALIDATION_THRESHOLDS['mass_changes_threshold'] = get_validation_threshold()
+print(f"Validation threshold initialized: {VALIDATION_THRESHOLDS['mass_changes_threshold']} total changes")
+
+# Print Slack notifications status on startup
+settings = load_settings()
+slack_settings = settings.get('slack', {})
+slack_enabled_settings = slack_settings.get('enabled', False)
+slack_webhook_settings = slack_settings.get('webhook_url', '')
+slack_enabled_env = SLACK_ALERTS_ENABLED
+slack_webhook_env = SLACK_WEBHOOK_URL
+
+# Check both settings and environment variables
+slack_enabled = slack_enabled_settings or slack_enabled_env
+slack_webhook = slack_webhook_settings or slack_webhook_env
+
+if slack_enabled and slack_webhook:
+    print("Slack Notifications: ENABLED")
+    source = "settings" if slack_webhook_settings else "environment"
+    print(f"   Webhook URL configured ({source}): {slack_webhook[:30]}...")
+elif slack_enabled and not slack_webhook:
+    print("Slack Notifications: ENABLED but no webhook URL configured")
+    print("   Configure webhook URL in Settings page or set SLACK_WEBHOOK_URL environment variable")
+else:
+    print("Slack Notifications: DISABLED")
+    print("   Enable in Settings page or set SLACK_ALERTS_ENABLED=true environment variable")
+
 # Initialize data files on startup
 initialize_data_files()
 

@@ -681,11 +681,18 @@ function isRoutingElement(elem) {
         return false;
     }
     
-    // Check for highway tag
+    // Excluded highway values (foot paths and cycleways)
+    const excludedHighwayValues = ['footway', 'path', 'pedestrian', 'steps', 'bridleway', 'cycleway'];
+    
+    // Check for highway tag and exclude foot paths
     const tags = elem.querySelectorAll('tag');
     for (const tag of tags) {
         if (tag.getAttribute('k') === 'highway') {
-            return true;
+            const highwayValue = (tag.getAttribute('v') || '').toLowerCase();
+            // Exclude foot paths
+            if (!excludedHighwayValues.includes(highwayValue)) {
+                return true;
+            }
         }
     }
     return false;

@@ -230,6 +230,168 @@ function initializeAnalyticsCharts() {
         });
     }
 
+    // Criteria Trends Over Time Chart (Line Chart)
+    const criteriaTrendsCtx = document.getElementById('criteriaTrendsChart');
+    if (criteriaTrendsCtx) {
+        analyticsCharts.criteriaTrends = new Chart(criteriaTrendsCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Mass Changes',
+                        data: [],
+                        borderColor: '#ef4444',
+                        backgroundColor: 'rgba(239, 68, 68, 0.08)',
+                        tension: 0.4,
+                        fill: true,
+                        borderWidth: 2.5,
+                        pointRadius: 3,
+                        pointHoverRadius: 5,
+                        pointBackgroundColor: '#ef4444',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        pointHoverBorderWidth: 2
+                    },
+                    {
+                        label: 'ERP',
+                        data: [],
+                        borderColor: '#a855f7',
+                        backgroundColor: 'rgba(168, 85, 247, 0.08)',
+                        tension: 0.4,
+                        fill: true,
+                        borderWidth: 2.5,
+                        pointRadius: 3,
+                        pointHoverRadius: 5,
+                        pointBackgroundColor: '#a855f7',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        pointHoverBorderWidth: 2
+                    },
+                    {
+                        label: 'One-Way',
+                        data: [],
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                        tension: 0.4,
+                        fill: true,
+                        borderWidth: 2.5,
+                        pointRadius: 3,
+                        pointHoverRadius: 5,
+                        pointBackgroundColor: '#3b82f6',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        pointHoverBorderWidth: 2
+                    },
+                    {
+                        label: 'Access Tags',
+                        data: [],
+                        borderColor: '#f59e0b',
+                        backgroundColor: 'rgba(245, 158, 11, 0.08)',
+                        tension: 0.4,
+                        fill: true,
+                        borderWidth: 2.5,
+                        pointRadius: 3,
+                        pointHoverRadius: 5,
+                        pointBackgroundColor: '#f59e0b',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        pointHoverBorderWidth: 2
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: {
+                            usePointStyle: true,
+                            padding: 10,
+                            boxWidth: 8,
+                            boxHeight: 8,
+                            font: {
+                                size: 10,
+                                family: 'Satoshi, sans-serif',
+                                weight: '500'
+                            },
+                            color: 'rgba(0, 0, 0, 0.7)'
+                        }
+                    },
+                    title: {
+                        display: false
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        backgroundColor: 'rgba(0, 0, 0, 0.85)',
+                        padding: 10,
+                        cornerRadius: 6,
+                        titleFont: {
+                            size: 11,
+                            family: 'Satoshi, sans-serif',
+                            weight: '600'
+                        },
+                        bodyFont: {
+                            size: 10,
+                            family: 'Satoshi, sans-serif'
+                        },
+                        borderColor: 'rgba(255, 255, 255, 0.1)',
+                        borderWidth: 1
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            font: {
+                                size: 10,
+                                family: 'Satoshi, sans-serif',
+                                weight: '500'
+                            },
+                            color: 'rgba(0, 0, 0, 0.6)',
+                            padding: 8
+                        },
+                        grid: {
+                            color: 'rgba(0, 0, 0, 0.06)',
+                            lineWidth: 1,
+                            drawBorder: false
+                        },
+                        border: {
+                            display: false
+                        }
+                    },
+                    x: {
+                        ticks: {
+                            font: {
+                                size: 9,
+                                family: 'Satoshi, sans-serif',
+                                weight: '500'
+                            },
+                            color: 'rgba(0, 0, 0, 0.6)',
+                            padding: 6,
+                            maxRotation: 45,
+                            minRotation: 45,
+                            maxTicksLimit: 30  // Limit number of labels for readability with long time periods
+                        },
+                        grid: {
+                            display: false
+                        },
+                        border: {
+                            display: false
+                        }
+                    }
+                },
+                interaction: {
+                    mode: 'nearest',
+                    axis: 'x',
+                    intersect: false
+                }
+            }
+        });
+    }
+
     chartsInitialized = true;
     console.log('Analytics charts initialized successfully');
 }
@@ -412,6 +574,24 @@ async function updateAnalyticsCharts() {
                 analytics.validation.needs_review || 0
             ];
             analyticsCharts.validation.update();
+        }
+        
+        // Update Criteria Trends Chart
+        if (analytics.criteriaTrends && analyticsCharts.criteriaTrends) {
+            analyticsCharts.criteriaTrends.data.labels = analytics.criteriaTrends.labels || [];
+            if (analytics.criteriaTrends.mass_changes) {
+                analyticsCharts.criteriaTrends.data.datasets[0].data = analytics.criteriaTrends.mass_changes;
+            }
+            if (analytics.criteriaTrends.erp) {
+                analyticsCharts.criteriaTrends.data.datasets[1].data = analytics.criteriaTrends.erp;
+            }
+            if (analytics.criteriaTrends.oneway) {
+                analyticsCharts.criteriaTrends.data.datasets[2].data = analytics.criteriaTrends.oneway;
+            }
+            if (analytics.criteriaTrends.access) {
+                analyticsCharts.criteriaTrends.data.datasets[3].data = analytics.criteriaTrends.access;
+            }
+            analyticsCharts.criteriaTrends.update();
         }
         
         // Update dashboard map for current region

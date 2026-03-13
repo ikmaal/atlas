@@ -22,6 +22,8 @@ $env:SECRET_KEY="YOUR_SECRET_KEY_HERE"
 $env:GROQ_API_KEY="YOUR_GROQ_API_KEY_HERE"
 $env:SLACK_WEBHOOK_URL=""
 $env:SLACK_ALERTS_ENABLED="false"
+# Atlas base URL for comparison links (set to localhost for local testing)
+$env:ATLAS_BASE_URL="http://localhost:5000"
 
 Write-Host "================================================" -ForegroundColor Cyan
 Write-Host "ATLAS - Singapore OpenStreetMap Monitor" -ForegroundColor Green
