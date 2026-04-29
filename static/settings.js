@@ -13,8 +13,7 @@ let currentSettings = {
     slack: {
         enabled: false,
         webhook_url: ''
-    },
-    trusted_users: ['kenken234']
+    }
 };
 
 // Load settings when page loads
@@ -95,10 +94,6 @@ function populateSettingsForm(settings) {
             webhookInput.value = '';
         }
     }
-
-    // Trusted users
-    const trustedUsers = settings.trusted_users || [];
-    renderTrustedUsersList(trustedUsers);
 }
 
 // Toggle Slack fields visibility
@@ -150,14 +145,6 @@ async function saveSettings() {
     const criterionOneway = document.getElementById('criterionOneway');
     const criterionAccess = document.getElementById('criterionAccess');
 
-    // Get trusted users list from DOM
-    const trustedUsersList = Array.from(document.querySelectorAll('.trusted-user-item')).map(item => {
-        return item.dataset.username;
-    }).filter(username => username); // Filter out any empty/null values
-    
-    // Fallback to current settings if DOM list is empty (shouldn't happen, but safety check)
-    const finalTrustedUsers = trustedUsersList.length > 0 ? trustedUsersList : (currentSettings.trusted_users || []);
-
     const settings = {
         validation: {
             mass_changes_threshold: parseInt(thresholdInput.value) || 50,
@@ -171,8 +158,7 @@ async function saveSettings() {
         slack: {
             enabled: slackEnabled.checked,
             webhook_url: webhookInput.value.trim()
-        },
-        trusted_users: finalTrustedUsers
+        }
     };
 
     // Validate
@@ -324,12 +310,6 @@ function initSettingsPage() {
         subsections.forEach(subsection => {
             subsection.classList.add('expanded');
         });
-        
-        // Ensure trusted users subsection is expanded
-        const trustedUsersSubsection = document.getElementById('trustedUsersSubsectionHeader')?.closest('.settings-subsection');
-        if (trustedUsersSubsection) {
-            trustedUsersSubsection.classList.add('expanded');
-        }
 
         // Set up subsection toggle handlers
         const criteriaHeader = document.getElementById('criteriaSubsectionHeader');
@@ -388,119 +368,11 @@ function initSettingsPage() {
             testBtn.addEventListener('click', testSlackNotification);
         }
 
-        // Trusted users subsection toggle
-        const trustedUsersHeader = document.getElementById('trustedUsersSubsectionHeader');
-        if (trustedUsersHeader) {
-            trustedUsersHeader.addEventListener('click', () => toggleSubsection('trustedUsersSubsectionHeader'));
-        }
-
         settingsInitialized = true;
     }
 
     // Always reload settings when tab is shown
     loadSettings();
-}
-
-// Render trusted users list
-function renderTrustedUsersList(trustedUsers) {
-    const listContainer = document.getElementById('trustedUsersList');
-    if (!listContainer) return;
-
-    if (!trustedUsers || trustedUsers.length === 0) {
-        listContainer.innerHTML = '<p style="color: var(--text-secondary); padding: 16px; text-align: center; border: 1px dashed var(--border-color); border-radius: 8px;">No trusted users added yet</p>';
-        return;
-    }
-
-    listContainer.innerHTML = trustedUsers.map(username => `
-        <div class="trusted-user-item" data-username="${escapeHtml(username)}" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 8px;">
-            <div style="display: flex; align-items: center; gap: 12px;">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--text-secondary);">
-                    <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                    <circle cx="8.5" cy="7" r="4"></circle>
-                    <path d="M20 8v6M23 11h-6"></path>
-                </svg>
-                <span style="font-weight: 500; color: var(--text-primary);">${escapeHtml(username)}</span>
-            </div>
-            <button type="button" onclick="removeTrustedUser('${escapeHtml(username)}')" style="padding: 4px 8px; background: transparent; border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-secondary); cursor: pointer; transition: all 0.2s ease;" onmouseover="this.style.background='var(--bg-secondary)'; this.style.color='var(--text-primary)';" onmouseout="this.style.background='transparent'; this.style.color='var(--text-secondary)';" title="Remove trusted user">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
-            </button>
-        </div>
-    `).join('');
-}
-
-// Add trusted user
-function addTrustedUser() {
-    const input = document.getElementById('trustedUserInput');
-    if (!input) return;
-
-    const username = input.value.trim();
-    if (!username) {
-        alert('Please enter a username');
-        return;
-    }
-
-    // Check if already exists
-    const existingUsers = Array.from(document.querySelectorAll('.trusted-user-item')).map(item => item.dataset.username);
-    if (existingUsers.includes(username)) {
-        alert('This user is already in the trusted users list');
-        input.value = '';
-        return;
-    }
-
-    // Add to list
-    const listContainer = document.getElementById('trustedUsersList');
-    if (!listContainer) return;
-
-    const userItem = document.createElement('div');
-    userItem.className = 'trusted-user-item';
-    userItem.dataset.username = username;
-    userItem.style.cssText = 'display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 8px;';
-    userItem.innerHTML = `
-        <div style="display: flex; align-items: center; gap: 12px;">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--text-secondary);">
-                <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                <circle cx="8.5" cy="7" r="4"></circle>
-                <path d="M20 8v6M23 11h-6"></path>
-            </svg>
-            <span style="font-weight: 500; color: var(--text-primary);">${escapeHtml(username)}</span>
-        </div>
-        <button type="button" onclick="removeTrustedUser('${escapeHtml(username)}')" style="padding: 4px 8px; background: transparent; border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-secondary); cursor: pointer; transition: all 0.2s ease;" onmouseover="this.style.background='var(--bg-secondary)'; this.style.color='var(--text-primary)';" onmouseout="this.style.background='transparent'; this.style.color='var(--text-secondary)';" title="Remove trusted user">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-        </button>
-    `;
-
-    // Remove empty state message if exists
-    const emptyState = listContainer.querySelector('p');
-    if (emptyState) {
-        emptyState.remove();
-    }
-
-    listContainer.appendChild(userItem);
-    input.value = '';
-}
-
-// Remove trusted user
-function removeTrustedUser(username) {
-    if (!confirm(`Remove ${username} from trusted users?`)) {
-        return;
-    }
-
-    const userItem = document.querySelector(`.trusted-user-item[data-username="${escapeHtml(username)}"]`);
-    if (userItem) {
-        userItem.remove();
-        
-        // Show empty state if no users left
-        const listContainer = document.getElementById('trustedUsersList');
-        if (listContainer && listContainer.querySelectorAll('.trusted-user-item').length === 0) {
-            listContainer.innerHTML = '<p style="color: var(--text-secondary); padding: 16px; text-align: center; border: 1px dashed var(--border-color); border-radius: 8px;">No trusted users added yet</p>';
-        }
-    }
 }
 
 // Toggle Mass Changes Threshold visibility
@@ -509,13 +381,6 @@ function toggleMassChangesThreshold(enabled) {
     if (thresholdField) {
         thresholdField.style.display = enabled ? 'block' : 'none';
     }
-}
-
-// Escape HTML to prevent XSS
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
 }
 
 // Initialize when DOM is ready

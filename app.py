@@ -1044,15 +1044,7 @@ def validate_changeset(changeset):
         'flags': []
     }
     
-    # Check if user is in trusted users list
     user = changeset.get('user', '')
-    if user:
-        settings = load_settings()
-        trusted_users = settings.get('trusted_users', [])
-        if user in trusted_users:
-            # Return early with valid status - trusted users don't need review
-            return validation
-    
     # Exclude changesets from usernames containing "GrabSG"
     if user and 'GrabSG' in user:
         # Return early with valid status - no review needed
@@ -2548,6 +2540,13 @@ def get_analytics():
         users_needing_review = {}
         total_changesets_checked = 0
         needs_review_count = 0
+        # Track issue categories for needs_review changesets (for 24-hour summary labels)
+        issue_categories = {
+            'mass_changes': 0,
+            'oneway': 0,
+            'erp': 0,
+            'access': 0
+        }
         
         for cs in changesets:
             total_changesets_checked += 1
@@ -2569,6 +2568,17 @@ def get_analytics():
                 # Only count valid usernames
                 if user and user != 'Unknown' and user.strip():
                     users_needing_review[user] = users_needing_review.get(user, 0) + 1
+                
+                # Count issue categories for 24-hour summary labels
+                flags = validation.get('flags', [])
+                if 'mass_changes' in flags or 'mass_deletion' in flags:
+                    issue_categories['mass_changes'] += 1
+                if 'oneway' in flags:
+                    issue_categories['oneway'] += 1
+                if 'erp' in flags:
+                    issue_categories['erp'] += 1
+                if 'access' in flags:
+                    issue_categories['access'] += 1
         
         # Debug logging to help identify issues
         print(f"Validation check: {total_changesets_checked} changesets checked, {needs_review_count} need review, {len(users_needing_review)} unique users")
@@ -2619,7 +2629,8 @@ def get_analytics():
             'needs_review': stats.get('validation', {}).get('needs_review', 0),
             'most_active_hour': most_active_hour,
             'top_contributor': contributors_data[0]['user'] if contributors_data else None,
-            'top_contributor_count': contributors_data[0]['changesets'] if contributors_data else 0
+            'top_contributor_count': contributors_data[0]['changesets'] if contributors_data else 0,
+            'issue_categories': issue_categories
         }
         
         analytics_data = {
@@ -3766,8 +3777,7 @@ def load_settings():
         'slack': {
             'enabled': False,
             'webhook_url': ''
-        },
-        'trusted_users': ['kenken234']
+        }
     }
     
     if os.path.exists(SETTINGS_FILE):
@@ -3777,6 +3787,7 @@ def load_settings():
                 # Merge with defaults to ensure all keys exist
                 settings = default_settings.copy()
                 settings.update(user_settings)
+                settings.pop('trusted_users', None)
                 return settings
         except Exception as e:
             print(f"WARNING: Error loading settings: {e}")
@@ -3812,6 +3823,7 @@ def get_settings():
     """Get current settings"""
     try:
         settings = load_settings()
+        settings.pop('trusted_users', None)
         # Don't expose webhook URL in full for security
         if settings.get('slack', {}).get('webhook_url'):
             webhook = settings['slack']['webhook_url']
@@ -3879,11 +3891,11 @@ def save_settings_endpoint():
             # Remove from data so it doesn't overwrite
             del data['slack']
         
-        # Update remaining top-level settings (like trusted_users)
-        # Only update if the key exists in data (preserve existing if not provided)
+        # Update remaining top-level keys from request body
         for key, value in data.items():
             current_settings[key] = value
-        
+        current_settings.pop('trusted_users', None)
+
         # Save settings
         if save_settings(current_settings):
             # Update runtime validation threshold

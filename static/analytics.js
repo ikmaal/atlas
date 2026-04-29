@@ -473,11 +473,32 @@ function updateDashboardSummary(summary) {
             `);
         }
         
-        // Review status
+        // Review status with issue category labels
         if (summary.needs_review > 0) {
+            const issueLabels = [];
+            const categories = summary.issue_categories || {};
+            
+            if (categories.mass_changes > 0) {
+                issueLabels.push(`<span class="issue-label issue-label-mass-changes">Mass Changes</span>`);
+            }
+            if (categories.oneway > 0) {
+                issueLabels.push(`<span class="issue-label issue-label-oneway">One-Way</span>`);
+            }
+            if (categories.erp > 0) {
+                issueLabels.push(`<span class="issue-label issue-label-erp">ERP</span>`);
+            }
+            if (categories.access > 0) {
+                issueLabels.push(`<span class="issue-label issue-label-access">Access</span>`);
+            }
+            
+            const labelsHtml = issueLabels.length > 0 
+                ? `<div class="issue-labels-container" style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px;">${issueLabels.join('')}</div>`
+                : '';
+            
             messages.push(`
                 <p class="summary-text">
                     <span class="summary-stat warning">${summary.needs_review}</span> changesets currently need review.
+                    ${labelsHtml}
                 </p>
             `);
         } else {

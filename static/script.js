@@ -1359,29 +1359,63 @@ function updateMap(changesets) {
             });
             
             // Build popup content
-            let validationBadge = '';
+            let statusText = 'Valid';
             if (cs.validation) {
                 const status = cs.validation.status;
-                const badgeClass = `badge-${status}`;
-                const badgeText = status === 'valid' ? 'Valid' : 
-                                 'Needs Review';
-                validationBadge = `<span class="badge ${badgeClass}">${badgeText}</span>`;
+                statusText = status === 'valid' ? 'Valid' : 'Needs Review';
             }
             
             const popupContent = `
-                <div class="popup-content">
-                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
-                        <h3 style="margin: 0;">${escapeHtml(cs.user)}</h3>
-                        ${validationBadge}
+                <div class="changeset-popup-content">
+                    <div class="changeset-popup-header">
+                        <h3 class="changeset-popup-title">Changeset #${cs.id}</h3>
+                        <button class="changeset-popup-close" onclick="this.closest('.leaflet-popup').closePopup()" aria-label="Close">&times;</button>
                     </div>
-                    <p style="margin: 4px 0;"><strong>${formatNumber(cs.num_changes)} changes</strong></p>
-                    <p style="margin: 8px 0; font-size: 0.85rem;">${escapeHtml(cs.comment)}</p>
-                    <p style="margin: 4px 0; font-size: 0.75rem; color: #666;">${formatDate(cs.created_at)} at ${formatTime(cs.created_at)}</p>
-                    <p style="margin: 8px 0 0 0;"><a href="https://www.openstreetmap.org/changeset/${cs.id}" target="_blank" style="color: #1a1a1a; font-weight: 600;">View on OSM →</a></p>
+                    <div class="changeset-popup-body">
+                        <div class="changeset-popup-field">
+                            <span class="changeset-popup-label">User:</span>
+                            <span class="changeset-popup-value">${escapeHtml(cs.user)}</span>
+                        </div>
+                        <div class="changeset-popup-field">
+                            <span class="changeset-popup-label">Status:</span>
+                            <span class="changeset-popup-value changeset-status-${cs.validation && cs.validation.status === 'valid' ? 'valid' : 'needs-review'}">${statusText}</span>
+                        </div>
+                        <button class="changeset-popup-osm-btn" onclick="window.open('https://www.openstreetmap.org/changeset/${cs.id}', '_blank')">
+                            View on OSM
+                        </button>
+                    </div>
                 </div>
             `;
             
-            marker.bindPopup(popupContent);
+            marker.bindPopup(popupContent, {
+                className: 'changeset-popup'
+            });
+            
+            // Ensure the class and styles are applied after popup is created
+            marker.on('popupopen', function() {
+                const popup = marker.getPopup().getElement();
+                if (popup) {
+                    popup.classList.add('changeset-popup');
+                    
+                    // Directly apply styles as fallback
+                    const wrapper = popup.querySelector('.leaflet-popup-content-wrapper');
+                    const tip = popup.querySelector('.leaflet-popup-tip');
+                    const content = popup.querySelector('.leaflet-popup-content');
+                    
+                    if (wrapper) {
+                        wrapper.style.backgroundColor = '#1a1a1a';
+                        wrapper.style.color = '#ffffff';
+                        wrapper.style.padding = '0';
+                    }
+                    if (tip) {
+                        tip.style.backgroundColor = '#1a1a1a';
+                    }
+                    if (content) {
+                        content.style.color = '#ffffff';
+                        content.style.margin = '16px';
+                    }
+                }
+            });
             markers.push(marker);
             markerCluster.addLayer(marker);
             markersCreated++;
