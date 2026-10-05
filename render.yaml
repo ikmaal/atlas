@@ -4,7 +4,7 @@ services:
     env: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 120 --workers 1
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 300 --workers 1
     envVars:
       - key: OSM_CLIENT_ID
         sync: false
@@ -19,6 +19,8 @@ services:
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: GROQ_API_KEY
+        sync: false
+      - key: CARTO_API_KEY
         sync: false
       - key: GOOGLE_CREDENTIALS_JSON
         sync: false

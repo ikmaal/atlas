@@ -624,16 +624,13 @@ function initializeMapComparison(messageElement) {
             scrollWheelZoom: true
         });
         
-        // Add Carto Light tiles
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        createCartoTileLayer({
             attribution: '© OpenStreetMap contributors © CARTO',
-            subdomains: 'abcd',
             maxZoom: 20
         }).addTo(beforeMap);
         
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        createCartoTileLayer({
             attribution: '© OpenStreetMap contributors © CARTO',
-            subdomains: 'abcd',
             maxZoom: 20
         }).addTo(afterMap);
         

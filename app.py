@@ -131,6 +131,22 @@ CHANGESET_TIME_RANGE_HOURS = int(os.environ.get('CHANGESET_TIME_RANGE_HOURS', '2
 
 # Cache for changeset details to avoid repeated API calls
 changeset_details_cache = {}
+changeset_xml_cache = {}
+_changesets_fetch_cache = {}
+CHANGESETS_FETCH_CACHE_TTL = 300  # 5 minutes
+
+def get_changeset_xml(changeset_id):
+    """Download and cache changeset XML (shared across detail + validation checks)."""
+    if changeset_id in changeset_xml_cache:
+        return changeset_xml_cache[changeset_id]
+
+    url = f"https://api.openstreetmap.org/api/0.6/changeset/{changeset_id}/download"
+    headers = {'User-Agent': 'ATLAS-Singapore/1.0'}
+    response = requests.get(url, headers=headers, timeout=10)
+    response.raise_for_status()
+    root = ET.fromstring(response.content)
+    changeset_xml_cache[changeset_id] = root
+    return root
 
 # ============================================
 # Slack Configuration
@@ -142,6 +158,8 @@ SLACK_ALERTS_ENABLED = os.environ.get('SLACK_ALERTS_ENABLED', 'false').lower() =
 SLACK_IS_WORKFLOW = '/triggers/' in SLACK_WEBHOOK_URL if SLACK_WEBHOOK_URL else False
 # Atlas base URL for comparison links
 ATLAS_BASE_URL = os.environ.get('ATLAS_BASE_URL', 'https://atlas.maptiler.com')
+# CARTO basemaps API key (free at https://carto.com/basemaps/apikey/)
+CARTO_API_KEY = os.environ.get('CARTO_API_KEY', '')
 
 # Track alerted changesets to avoid duplicate notifications
 ALERTED_CHANGESETS_FILE = '.alerted_changesets.json'
@@ -640,9 +658,11 @@ else:
 @app.route('/api/cache/clear')
 def clear_cache():
     """Clear the changeset details cache"""
-    global changeset_details_cache, erp_cache
+    global changeset_details_cache, erp_cache, changeset_xml_cache, _changesets_fetch_cache
     count = len(changeset_details_cache)
     changeset_details_cache.clear()
+    changeset_xml_cache.clear()
+    _changesets_fetch_cache.clear()
     erp_cache.clear()
     return jsonify({'success': True, 'message': f'Cleared {count} cached changesets'})
 
@@ -870,15 +890,7 @@ def check_changeset_has_erp(changeset_id):
         return cached_result[0], cached_result[1]
     
     try:
-        url = f"https://api.openstreetmap.org/api/0.6/changeset/{changeset_id}/download"
-        headers = {'User-Agent': 'ATLAS-Singapore/1.0'}
-        
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        
-        # Parse XML to check for name=ERP tags
-        root = ET.fromstring(response.content)
-        
+        root = get_changeset_xml(changeset_id)
         erp_count = 0
         
         # Check all actions (create, modify, delete)
@@ -922,12 +934,7 @@ def check_changeset_has_oneway(changeset_id):
         return cached_result
     
     try:
-        url = f"https://api.openstreetmap.org/api/0.6/changeset/{changeset_id}/download"
-        headers = {'User-Agent': 'ATLAS-Singapore/1.0'}
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        
-        root = ET.fromstring(response.content)
+        root = get_changeset_xml(changeset_id)
         oneway_count = 0
         
         # Check all actions (create, modify, delete)
@@ -973,12 +980,7 @@ def check_changeset_has_access_tags(changeset_id):
         return cached_result
     
     try:
-        url = f"https://api.openstreetmap.org/api/0.6/changeset/{changeset_id}/download"
-        headers = {'User-Agent': 'ATLAS-Singapore/1.0'}
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        
-        root = ET.fromstring(response.content)
+        root = get_changeset_xml(changeset_id)
         access_count = 0
         
         # List of access-related tags to check
@@ -1158,15 +1160,7 @@ def fetch_changeset_details(changeset_id):
         return changeset_details_cache[changeset_id]
     
     try:
-        url = f"https://api.openstreetmap.org/api/0.6/changeset/{changeset_id}/download"
-        headers = {'User-Agent': 'ATLAS-Singapore/1.0'}
-        
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        
-        # Parse XML to count different types of changes
-        root = ET.fromstring(response.content)
-        
+        root = get_changeset_xml(changeset_id)
         stats = {
             'created': {'node': 0, 'way': 0, 'relation': 0},
             'modified': {'node': 0, 'way': 0, 'relation': 0},
@@ -1222,8 +1216,14 @@ def fetch_osm_changesets(bbox=None, limit=200, region=None, time_range_hours=Non
         bbox = get_region_bbox(region)
     
     region_name = get_region_name(region)
+    hours_to_fetch = time_range_hours if time_range_hours is not None else CHANGESET_TIME_RANGE_HOURS
+    cache_key = (region, limit, hours_to_fetch)
+    cached = _changesets_fetch_cache.get(cache_key)
+    if cached and (time.time() - cached['fetched_at']) < CHANGESETS_FETCH_CACHE_TTL:
+        print(f"Using cached changesets for {region_name} ({len(cached['changesets'])} items)")
+        return cached['changesets']
+
     try:
-        import time
         start_time_overall = time.time()
         
         # OSM API endpoint for changesets
@@ -1238,9 +1238,6 @@ def fetch_osm_changesets(bbox=None, limit=200, region=None, time_range_hours=Non
         
         # Start from now and go backwards (configurable time range)
         current_end = datetime.now(timezone.utc)
-        # Use provided time_range_hours, or default to CHANGESET_TIME_RANGE_HOURS
-        # If time_range_hours is None, don't set a start_time (fetch all history)
-        hours_to_fetch = time_range_hours if time_range_hours is not None else CHANGESET_TIME_RANGE_HOURS
         start_time = current_end - timedelta(hours=hours_to_fetch) if hours_to_fetch else None
         
         # We'll make multiple requests, each time using the oldest changeset from the previous batch
@@ -1491,6 +1488,10 @@ def fetch_osm_changesets(bbox=None, limit=200, region=None, time_range_hours=Non
         
         total_time = time.time() - start_time_overall
         print(f"SUCCESS: Loaded {len(changesets)} changesets successfully in {total_time:.1f}s")
+        _changesets_fetch_cache[cache_key] = {
+            'fetched_at': time.time(),
+            'changesets': changesets
+        }
         return changesets
     
     except Exception as e:
@@ -1557,7 +1558,7 @@ def get_statistics(changesets):
 @app.route('/')
 def index():
     """Serve the dashboard HTML page"""
-    return render_template('index.html')
+    return render_template('index.html', carto_api_key=CARTO_API_KEY)
 
 # ============================================
 # Region API Endpoints
@@ -2402,7 +2403,7 @@ def fetch_element_geometry(element_type, element_id, version=None):
 def get_stats():
     """API endpoint to get statistics"""
     region_id = request.args.get('region', 'singapore')
-    changesets = fetch_osm_changesets(region=region_id)
+    changesets = fetch_osm_changesets(region=region_id, limit=1000)
     stats = get_statistics(changesets)
     return jsonify({
         'success': True,

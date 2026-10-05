@@ -1,3 +1,26 @@
+// Shared map tile layer (CARTO with API key, or OSM fallback)
+function createCartoTileLayer(options = {}) {
+    const key = window.ATLAS_CONFIG?.cartoApiKey;
+    const defaults = key
+        ? {
+            url: `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${encodeURIComponent(key)}`,
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+            subdomains: 'abcd'
+        }
+        : {
+            url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            subdomains: 'abc'
+        };
+
+    return L.tileLayer(defaults.url, {
+        attribution: options.attribution || defaults.attribution,
+        maxZoom: 19,
+        subdomains: defaults.subdomains,
+        ...options
+    });
+}
+
 // Global variables
 let map;
 let markers = [];
@@ -842,12 +865,7 @@ function initMap() {
     map = L.map('map').setView(regionCenter, regionZoom);
     console.log('Map initialized');
     
-    // Add CartoDB Light tile layer (clean, modern style)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        maxZoom: 19,
-        subdomains: 'abcd'
-    }).addTo(map);
+    createCartoTileLayer().addTo(map);
 
     // Create a custom pane for the region boundary to ensure visibility
     map.createPane('boundaryPane');
@@ -2638,7 +2656,7 @@ function initializeComparisonMaps() {
     beforeMap = L.map('beforeMap', {
         maxZoom: 22
     }).setView([1.3521, 103.8198], 15);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    createCartoTileLayer({
         attribution: '&copy; OpenStreetMap contributors',
         maxZoom: 22
     }).addTo(beforeMap);
@@ -2652,7 +2670,7 @@ function initializeComparisonMaps() {
     afterMap = L.map('afterMap', {
         maxZoom: 22
     }).setView([1.3521, 103.8198], 15);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    createCartoTileLayer({
         attribution: '&copy; OpenStreetMap contributors',
         maxZoom: 22
     }).addTo(afterMap);

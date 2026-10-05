@@ -666,8 +666,7 @@ function initializeDashboardMap() {
     // Initialize map
     dashboardMap = L.map('dashboardMap').setView(regionCenter, regionZoom);
     
-    // Add tile layer
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    createCartoTileLayer({
         attribution: '&copy; OpenStreetMap contributors',
         maxZoom: 19
     }).addTo(dashboardMap);

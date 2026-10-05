@@ -24,6 +24,8 @@ $env:SLACK_WEBHOOK_URL=""
 $env:SLACK_ALERTS_ENABLED="false"
 # Atlas base URL for comparison links (set to localhost for local testing)
 $env:ATLAS_BASE_URL="http://localhost:5000"
+# CARTO basemaps API key (free at https://carto.com/basemaps/apikey/)
+$env:CARTO_API_KEY="YOUR_CARTO_API_KEY_HERE"
 
 Write-Host "================================================" -ForegroundColor Cyan
 Write-Host "ATLAS - Singapore OpenStreetMap Monitor" -ForegroundColor Green
