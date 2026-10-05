@@ -348,6 +348,27 @@
                             <!-- Dashboard Map -->
                             <div class="dashboard-card" style="grid-column: span 12; padding: 0;">
                                 <div id="dashboardMap" style="height: 500px; width: 100%; position: relative;">
+                                    <!-- Map Style Picker -->
+                                    <div class="map-style-picker" id="mapStylePicker">
+                                        <button
+                                            type="button"
+                                            class="map-style-picker-toggle"
+                                            id="mapStylePickerToggle"
+                                            aria-expanded="false"
+                                            aria-controls="mapStylePickerPanel"
+                                            title="Change map style"
+                                        >
+                                            <span class="map-style-picker-current-preview map-style-preview--positron" id="mapStylePickerPreview" aria-hidden="true"></span>
+                                            <span class="map-style-picker-label" id="mapStylePickerLabel">Positron</span>
+                                            <svg class="map-style-picker-chevron" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                                <polyline points="6 9 12 15 18 9"></polyline>
+                                            </svg>
+                                        </button>
+                                        <div class="map-style-picker-panel" id="mapStylePickerPanel" hidden>
+                                            <div class="map-style-picker-grid" id="mapStylePickerGrid"></div>
+                                        </div>
+                                    </div>
+
                                     <!-- Dashboard Map Legend -->
                                     <div class="map-legend">
                                         <div class="map-legend-header">

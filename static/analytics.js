@@ -666,7 +666,8 @@ function initializeDashboardMap() {
     // Initialize map
     dashboardMap = L.map('dashboardMap').setView(regionCenter, regionZoom);
     
-    createCartoTileLayer({
+    const dashboardStyleId = typeof getStoredMapStyle === 'function' ? getStoredMapStyle() : 'positron';
+    dashboardTileLayer = createMapStyleLayer(dashboardStyleId, {
         attribution: '&copy; OpenStreetMap contributors',
         maxZoom: 19
     }).addTo(dashboardMap);

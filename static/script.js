@@ -1,28 +1,116 @@
-// Shared map tile layer (CARTO with API key, or OSM fallback)
-function createCartoTileLayer(options = {}) {
-    const key = window.ATLAS_CONFIG?.cartoApiKey;
-    const defaults = key
-        ? {
-            url: `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${encodeURIComponent(key)}`,
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-            subdomains: 'abcd'
-        }
-        : {
-            url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-            subdomains: 'abc'
-        };
+const MAP_STYLE_STORAGE_KEY = 'atlasMapStyle';
 
-    return L.tileLayer(defaults.url, {
-        attribution: options.attribution || defaults.attribution,
-        maxZoom: 19,
-        subdomains: defaults.subdomains,
-        ...options
+const MAP_STYLES = {
+    positron: {
+        id: 'positron',
+        name: 'Positron',
+        description: 'Clean & minimal',
+        previewClass: 'map-style-preview--positron',
+        requiresCartoKey: true,
+        build() {
+            const key = window.ATLAS_CONFIG?.cartoApiKey;
+            if (!key) return MAP_STYLES.openstreetmap.build();
+            return {
+                url: `https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png?key=${encodeURIComponent(key)}`,
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                subdomains: 'abcd',
+                maxZoom: 20
+            };
+        }
+    },
+    voyager: {
+        id: 'voyager',
+        name: 'Voyager',
+        description: 'Colorful & detailed',
+        previewClass: 'map-style-preview--voyager',
+        requiresCartoKey: true,
+        build() {
+            const key = window.ATLAS_CONFIG?.cartoApiKey;
+            if (!key) return MAP_STYLES.openstreetmap.build();
+            return {
+                url: `https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=${encodeURIComponent(key)}`,
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                subdomains: 'abcd',
+                maxZoom: 20
+            };
+        }
+    },
+    'dark-matter': {
+        id: 'dark-matter',
+        name: 'Dark Matter',
+        description: 'Dark mode basemap',
+        previewClass: 'map-style-preview--dark-matter',
+        requiresCartoKey: true,
+        build() {
+            const key = window.ATLAS_CONFIG?.cartoApiKey;
+            if (!key) return MAP_STYLES.openstreetmap.build();
+            return {
+                url: `https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=${encodeURIComponent(key)}`,
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                subdomains: 'abcd',
+                maxZoom: 20
+            };
+        }
+    },
+    openstreetmap: {
+        id: 'openstreetmap',
+        name: 'OpenStreetMap',
+        description: 'Classic OSM tiles',
+        previewClass: 'map-style-preview--openstreetmap',
+        requiresCartoKey: false,
+        build() {
+            return {
+                url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                subdomains: 'abc',
+                maxZoom: 19
+            };
+        }
+    },
+    opentopo: {
+        id: 'opentopo',
+        name: 'OpenTopo',
+        description: 'Terrain & elevation',
+        previewClass: 'map-style-preview--opentopo',
+        requiresCartoKey: false,
+        build() {
+            return {
+                url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+                attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)',
+                subdomains: 'abc',
+                maxZoom: 17
+            };
+        }
+    }
+};
+
+function getStoredMapStyle() {
+    const stored = localStorage.getItem(MAP_STYLE_STORAGE_KEY);
+    return MAP_STYLES[stored] ? stored : 'positron';
+}
+
+function createMapStyleLayer(styleId = 'positron', options = {}) {
+    const style = MAP_STYLES[styleId] || MAP_STYLES.positron;
+    const config = style.build();
+    const { attribution, maxZoom, subdomains, ...rest } = options;
+
+    return L.tileLayer(config.url, {
+        attribution: attribution || config.attribution,
+        maxZoom: maxZoom ?? config.maxZoom,
+        subdomains: subdomains || config.subdomains,
+        ...rest
     });
+}
+
+function createCartoTileLayer(options = {}) {
+    return createMapStyleLayer(getStoredMapStyle(), options);
 }
 
 // Global variables
 let map;
+let mapTileLayer = null;
+let dashboardTileLayer = null;
+let currentMapStyleId = getStoredMapStyle();
 let markers = [];
 let markerCluster;
 let changesets = [];
@@ -865,7 +953,7 @@ function initMap() {
     map = L.map('map').setView(regionCenter, regionZoom);
     console.log('Map initialized');
     
-    createCartoTileLayer().addTo(map);
+    mapTileLayer = createMapStyleLayer(currentMapStyleId).addTo(map);
 
     // Create a custom pane for the region boundary to ensure visibility
     map.createPane('boundaryPane');
@@ -1595,10 +1683,101 @@ function updateMapVisibility() {
     updateMap(filteredChangesets);
 }
 
-// Initialize map controls (legend only)
+function replaceMapTileLayer(targetMap, currentLayer, styleId, options = {}) {
+    if (!targetMap) return currentLayer;
+    if (currentLayer) {
+        targetMap.removeLayer(currentLayer);
+    }
+    return createMapStyleLayer(styleId, options).addTo(targetMap);
+}
+
+function setMapStyle(styleId) {
+    if (!MAP_STYLES[styleId]) return;
+
+    currentMapStyleId = styleId;
+    mapTileLayer = replaceMapTileLayer(map, mapTileLayer, styleId);
+
+    const dashboardMapInstance = typeof dashboardMap !== 'undefined' ? dashboardMap : null;
+    dashboardTileLayer = replaceMapTileLayer(
+        dashboardMapInstance,
+        dashboardTileLayer,
+        styleId,
+        { attribution: '&copy; OpenStreetMap contributors', maxZoom: 19 }
+    );
+
+    localStorage.setItem(MAP_STYLE_STORAGE_KEY, styleId);
+    updateMapStylePickerUI();
+}
+
+function initMapStylePicker() {
+    const picker = document.getElementById('mapStylePicker');
+    const toggle = document.getElementById('mapStylePickerToggle');
+    const panel = document.getElementById('mapStylePickerPanel');
+    const grid = document.getElementById('mapStylePickerGrid');
+
+    if (!picker || !toggle || !panel || !grid) return;
+
+    grid.innerHTML = Object.values(MAP_STYLES).map(style => `
+        <button
+            type="button"
+            class="map-style-option${style.id === currentMapStyleId ? ' active' : ''}"
+            data-style="${style.id}"
+            aria-pressed="${style.id === currentMapStyleId}"
+        >
+            <span class="map-style-preview ${style.previewClass}" aria-hidden="true"></span>
+            <span class="map-style-name">${style.name}</span>
+        </button>
+    `).join('');
+
+    grid.querySelectorAll('.map-style-option').forEach(button => {
+        button.addEventListener('click', () => {
+            setMapStyle(button.dataset.style);
+            panel.hidden = true;
+            toggle.setAttribute('aria-expanded', 'false');
+            picker.classList.remove('open');
+        });
+    });
+
+    toggle.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const isOpen = !panel.hidden;
+        panel.hidden = isOpen;
+        toggle.setAttribute('aria-expanded', String(!isOpen));
+        picker.classList.toggle('open', !isOpen);
+    });
+
+    document.addEventListener('click', (event) => {
+        if (!picker.contains(event.target)) {
+            panel.hidden = true;
+            toggle.setAttribute('aria-expanded', 'false');
+            picker.classList.remove('open');
+        }
+    });
+
+    updateMapStylePickerUI();
+}
+
+function updateMapStylePickerUI() {
+    const style = MAP_STYLES[currentMapStyleId] || MAP_STYLES.positron;
+    const label = document.getElementById('mapStylePickerLabel');
+    const preview = document.getElementById('mapStylePickerPreview');
+
+    if (label) label.textContent = style.name;
+    if (preview) {
+        preview.className = `map-style-picker-current-preview ${style.previewClass}`;
+    }
+
+    document.querySelectorAll('.map-style-option').forEach(button => {
+        const isActive = button.dataset.style === currentMapStyleId;
+        button.classList.toggle('active', isActive);
+        button.setAttribute('aria-pressed', String(isActive));
+    });
+}
+
+// Initialize map controls (legend + style picker)
 function initMapControls() {
-    // Initialize legend
     updateLegend();
+    initMapStylePicker();
 }
 
 // Update last update time
