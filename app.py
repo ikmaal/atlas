@@ -160,6 +160,7 @@ SLACK_IS_WORKFLOW = '/triggers/' in SLACK_WEBHOOK_URL if SLACK_WEBHOOK_URL else 
 ATLAS_BASE_URL = os.environ.get('ATLAS_BASE_URL', 'https://atlas.maptiler.com')
 # CARTO basemaps API key (free at https://carto.com/basemaps/apikey/)
 CARTO_API_KEY = os.environ.get('CARTO_API_KEY', '')
+GROQ_MODEL = os.environ.get('GROQ_MODEL', 'qwen/qwen3.8-27b')
 
 # Track alerted changesets to avoid duplicate notifications
 ALERTED_CHANGESETS_FILE = '.alerted_changesets.json'
@@ -3582,7 +3583,7 @@ Dashboard features you can help explain:
                 {"role": "system", "content": full_system_prompt},
                 {"role": "user", "content": message}
             ],
-            model="llama-3.1-8b-instant",  # Fast and capable model
+            model=GROQ_MODEL,
             temperature=0.7,
             max_tokens=1024,
         )

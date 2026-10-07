@@ -20,6 +20,7 @@ $env:SECRET_KEY="YOUR_SECRET_KEY_HERE"
 
 # Groq API Key for Atlas AI (get free key from https://console.groq.com)
 $env:GROQ_API_KEY="YOUR_GROQ_API_KEY_HERE"
+$env:GROQ_MODEL="qwen/qwen3.8-27b"
 $env:SLACK_WEBHOOK_URL=""
 $env:SLACK_ALERTS_ENABLED="false"
 # Atlas base URL for comparison links (set to localhost for local testing)

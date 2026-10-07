@@ -20,6 +20,8 @@ services:
         sync: false
       - key: GROQ_API_KEY
         sync: false
+      - key: GROQ_MODEL
+        value: "qwen/qwen3.8-27b"
       - key: CARTO_API_KEY
         sync: false
       - key: GOOGLE_CREDENTIALS_JSON
