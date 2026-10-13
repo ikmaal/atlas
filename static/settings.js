@@ -229,6 +229,70 @@ async function saveSettings() {
     }
 }
 
+function getSlackWebhookUrlForTest() {
+    const webhookInput = document.getElementById('slackWebhookUrl');
+    if (webhookInput && webhookInput.value.trim()) {
+        return webhookInput.value.trim();
+    }
+    const stored = localStorage.getItem('slackWebhookUrl');
+    return stored ? stored.trim() : '';
+}
+
+// Send a realistic Slack preview for one review criterion
+async function testCriterionSlackNotification(criterion, buttonEl) {
+    const webhookUrl = getSlackWebhookUrlForTest();
+    if (!webhookUrl) {
+        alert('Add a Slack webhook URL under Notifications & Integrations first.');
+        return;
+    }
+
+    const originalText = buttonEl ? buttonEl.textContent : '';
+    if (buttonEl) {
+        buttonEl.disabled = true;
+        buttonEl.textContent = 'Sending…';
+    }
+
+    const payload = { criterion, webhook_url: webhookUrl };
+    if (criterion === 'mass_changes') {
+        const thresholdInput = document.getElementById('massDeletionThreshold');
+        if (thresholdInput && thresholdInput.value) {
+            payload.mass_threshold = parseInt(thresholdInput.value, 10);
+        }
+    }
+
+    try {
+        const response = await fetch('/api/test/slack/criterion', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+            if (buttonEl) {
+                buttonEl.textContent = 'Sent';
+                setTimeout(() => {
+                    buttonEl.textContent = originalText;
+                    buttonEl.disabled = false;
+                }, 2500);
+            }
+        } else {
+            alert(data.error || 'Failed to send message to Slack.');
+            if (buttonEl) {
+                buttonEl.textContent = originalText;
+                buttonEl.disabled = false;
+            }
+        }
+    } catch (error) {
+        console.error('Error sending criterion Slack preview:', error);
+        alert('Error: Could not reach the server.');
+        if (buttonEl) {
+            buttonEl.textContent = originalText;
+            buttonEl.disabled = false;
+        }
+    }
+}
+
 // Test Slack notification
 async function testSlackNotification() {
     const testStatus = document.getElementById('slackTestStatus');
@@ -367,6 +431,15 @@ function initSettingsPage() {
         if (testBtn) {
             testBtn.addEventListener('click', testSlackNotification);
         }
+
+        document.querySelectorAll('.settings-criterion-slack-test').forEach((btn) => {
+            btn.addEventListener('click', function () {
+                const criterion = this.getAttribute('data-criterion');
+                if (criterion) {
+                    testCriterionSlackNotification(criterion, this);
+                }
+            });
+        });
 
         settingsInitialized = true;
     }

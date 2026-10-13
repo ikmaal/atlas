@@ -190,21 +190,120 @@ alerted_changesets = load_alerted_changesets()
 if alerted_changesets:
     print(f"Loaded {len(alerted_changesets)} previously alerted changesets")
 
-def send_slack_notification(changeset):
+CRITERION_TEST_IDS = {
+    'mass_changes': '190384721',
+    'erp': '190412903',
+    'oneway': '190398556',
+    'access': '190405118',
+}
+
+def create_sample_changeset_for_criterion(criterion, mass_threshold=None):
+    """Build a realistic-looking sample changeset for Slack preview by criterion."""
+    if mass_threshold is None:
+        mass_threshold = get_validation_threshold()
+    mass_threshold = max(int(mass_threshold), 10)
+    now = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+    cs_id = CRITERION_TEST_IDS.get(criterion, '190384721')
+
+    if criterion == 'mass_changes':
+        created = max(mass_threshold // 3, 12)
+        modified = max(mass_threshold // 4, 8)
+        deleted = max(mass_threshold - created - modified, 5)
+        total = created + modified + deleted
+        reason = (
+            f'Mass changes detected: {created} additions, {modified} modifications, '
+            f'{deleted} deletions (total: {total} elements)'
+        )
+        comment = 'Landuse and building footprint updates from recent aerial imagery (Singapore east)'
+        return {
+            'id': cs_id,
+            'user': 'ivan_sg',
+            'comment': comment,
+            'created_at': now,
+            'validation': {
+                'status': 'needs_review',
+                'reasons': [reason],
+                'flags': ['mass_changes'],
+            },
+            'details': {
+                'total_created': created,
+                'total_modified': modified,
+                'total_deleted': deleted,
+            },
+            'tags': {'comment': comment, 'source': 'JOSM/1.7.3'},
+        }
+
+    if criterion == 'erp':
+        reason = 'ERP modification detected: 3 ERP element(s) modified'
+        comment = 'Update ERP gantry tags after LTA rate revision; verify toll directions'
+        return {
+            'id': cs_id,
+            'user': 'SG-RoadReview',
+            'comment': comment,
+            'created_at': now,
+            'validation': {
+                'status': 'needs_review',
+                'reasons': [reason],
+                'flags': ['erp'],
+            },
+            'details': {'total_created': 0, 'total_modified': 3, 'total_deleted': 0},
+            'tags': {'comment': comment, 'source': 'JOSM/1.7.3'},
+        }
+
+    if criterion == 'oneway':
+        reason = 'One-way edit detected: 2 one-way element(s)'
+        comment = 'Align oneway with new contra-flow bus lane along Orchard Link'
+        return {
+            'id': cs_id,
+            'user': 'mapsg_d',
+            'comment': comment,
+            'created_at': now,
+            'validation': {
+                'status': 'needs_review',
+                'reasons': [reason],
+                'flags': ['oneway'],
+            },
+            'details': {'total_created': 0, 'total_modified': 2, 'total_deleted': 0},
+            'tags': {'comment': comment, 'source': 'iD 2.29.1'},
+        }
+
+    if criterion == 'access':
+        reason = 'Access tag edit detected: 4 element(s) with access tags'
+        comment = 'Set access=private on condo service roads; match gate signage'
+        return {
+            'id': cs_id,
+            'user': 'keng88',
+            'comment': comment,
+            'created_at': now,
+            'validation': {
+                'status': 'needs_review',
+                'reasons': [reason],
+                'flags': ['access'],
+            },
+            'details': {'total_created': 0, 'total_modified': 4, 'total_deleted': 0},
+            'tags': {'comment': comment, 'source': 'JOSM/1.7.3'},
+        }
+
+    return None
+
+def send_slack_notification(
+    changeset,
+    webhook_url_override=None,
+    force_send=False,
+    skip_alert_tracking=False,
+):
     """Send Slack notification for needs_review changesets"""
-    # Get Slack settings from saved settings (preferred) or environment variables (fallback)
-    settings = load_settings()
-    slack_settings = settings.get('slack', {})
-    
-    # Get webhook URL from settings first, then fall back to environment variable
-    webhook_url = slack_settings.get('webhook_url', '') or SLACK_WEBHOOK_URL
-    slack_enabled = slack_settings.get('enabled', False) or SLACK_ALERTS_ENABLED
-    
-    if not webhook_url or not slack_enabled:
-        if not webhook_url:
-            print("WARNING: Slack webhook URL not configured in settings or environment")
-        if not slack_enabled:
-            print("WARNING: Slack alerts not enabled in settings or environment")
+    if webhook_url_override:
+        webhook_url = webhook_url_override.strip()
+        slack_enabled = bool(webhook_url)
+    else:
+        slack_enabled, webhook_url = get_slack_notification_config()
+
+    if not force_send and not slack_enabled:
+        return False
+
+    if not webhook_url:
+        print("WARNING: Slack alerts enabled in Settings but no webhook URL is configured")
         return False
     
     # Detect if using Slack Workflow (workflow URLs contain '/triggers/')
@@ -216,9 +315,15 @@ def send_slack_notification(changeset):
     
     # Convert to string for consistent comparison
     cs_id_str = str(cs_id)
+
+    def clear_alerted_mark():
+        if skip_alert_tracking:
+            return
+        alerted_changesets.discard(cs_id_str)
+        save_alerted_changesets(alerted_changesets)
     
     # Check if already alerted (avoid duplicates)
-    if cs_id_str in alerted_changesets:
+    if not skip_alert_tracking and cs_id_str in alerted_changesets:
         print(f"Skipping changeset {cs_id_str} - already notified")
         return False
     
@@ -230,10 +335,11 @@ def send_slack_notification(changeset):
         if status != 'needs_review':
             return False
         
-        # Mark as alerted and save to file (use string for consistency)
-        alerted_changesets.add(cs_id_str)
-        save_alerted_changesets(alerted_changesets)
-        print(f"Marked changeset {cs_id_str} as alerted")
+        if not skip_alert_tracking:
+            # Mark as alerted and save to file (use string for consistency)
+            alerted_changesets.add(cs_id_str)
+            save_alerted_changesets(alerted_changesets)
+            print(f"Marked changeset {cs_id_str} as alerted")
         
         # Prepare changeset data
         user = changeset.get('user', 'Unknown')
@@ -438,8 +544,7 @@ def send_slack_notification(changeset):
                 print(f"ERROR: Failed to send Slack notification: HTTP {response.status_code}")
                 print(f"   Response: {response.text[:200]}")
                 # Remove from alerted set if failed so it can be retried
-                alerted_changesets.discard(cs_id_str)
-                save_alerted_changesets(alerted_changesets)
+                clear_alerted_mark()
                 return False
                 
         except requests.exceptions.ConnectionError as e:
@@ -451,16 +556,14 @@ def send_slack_notification(changeset):
             print(f"   - Verify the webhook URL is correct in settings")
             print(f"   - Check if firewall is blocking HTTPS requests")
             print(f"   - Ensure Slack webhook URL is still valid")
-            alerted_changesets.discard(cs_id_str)
-            save_alerted_changesets(alerted_changesets)
+            clear_alerted_mark()
             return False
             
         except requests.exceptions.Timeout as e:
             print(f"ERROR: Timeout Error: Request to Slack timed out after 10 seconds")
             print(f"   Changeset ID: {cs_id_str}")
             print(f"   Error details: {str(e)}")
-            alerted_changesets.discard(cs_id_str)
-            save_alerted_changesets(alerted_changesets)
+            clear_alerted_mark()
             return False
             
         except requests.exceptions.SSLError as e:
@@ -468,16 +571,14 @@ def send_slack_notification(changeset):
             print(f"   Changeset ID: {cs_id_str}")
             print(f"   Error details: {str(e)}")
             print(f"   This might indicate a network/proxy issue")
-            alerted_changesets.discard(cs_id_str)
-            save_alerted_changesets(alerted_changesets)
+            clear_alerted_mark()
             return False
             
         except requests.exceptions.RequestException as e:
             print(f"ERROR: Request Error: {type(e).__name__}")
             print(f"   Changeset ID: {cs_id_str}")
             print(f"   Error details: {str(e)}")
-            alerted_changesets.discard(cs_id_str)
-            save_alerted_changesets(alerted_changesets)
+            clear_alerted_mark()
             return False
             
     except Exception as e:
@@ -488,8 +589,7 @@ def send_slack_notification(changeset):
         traceback.print_exc()
         # Remove from alerted set if failed so it can be retried
         if 'cs_id_str' in locals():
-            alerted_changesets.discard(cs_id_str)
-            save_alerted_changesets(alerted_changesets)
+            clear_alerted_mark()
         return False
 
 # ============================================
@@ -829,6 +929,69 @@ def test_slack_notification():
             'success': False,
             'error': f'Error: {str(e)}'
         }), 500
+
+VALID_REVIEW_CRITERIA = frozenset({'mass_changes', 'erp', 'oneway', 'access'})
+
+@app.route('/api/test/slack/criterion', methods=['POST'])
+def test_slack_criterion_notification():
+    """Send a realistic Slack preview for a single review criterion (not tracked as a real alert)."""
+    data = request.get_json() or {}
+    criterion = (data.get('criterion') or '').strip()
+
+    if criterion not in VALID_REVIEW_CRITERIA:
+        return jsonify({
+            'success': False,
+            'error': 'Invalid criterion. Use mass_changes, erp, oneway, or access.',
+        }), 400
+
+    webhook_url = (data.get('webhook_url') or '').strip()
+    if not webhook_url:
+        settings = load_settings()
+        webhook_url = (settings.get('slack') or {}).get('webhook_url', '').strip()
+    if not webhook_url:
+        webhook_url = (os.environ.get('SLACK_WEBHOOK_URL') or '').strip()
+
+    if not webhook_url:
+        return jsonify({
+            'success': False,
+            'error': 'Webhook URL is required. Enter one under Slack notifications or configure SLACK_WEBHOOK_URL.',
+        }), 400
+
+    if not (webhook_url.startswith('https://hooks.slack.com/') or
+            webhook_url.startswith('https://hooks.slack.com/services/') or
+            '/triggers/' in webhook_url):
+        return jsonify({
+            'success': False,
+            'error': 'Invalid webhook URL format. Should be a valid Slack webhook URL.',
+        }), 400
+
+    mass_threshold = data.get('mass_threshold')
+    if mass_threshold is not None:
+        try:
+            mass_threshold = int(mass_threshold)
+        except (TypeError, ValueError):
+            mass_threshold = None
+
+    sample = create_sample_changeset_for_criterion(criterion, mass_threshold)
+    if not sample:
+        return jsonify({'success': False, 'error': 'Could not build sample changeset.'}), 400
+
+    sent = send_slack_notification(
+        sample,
+        webhook_url_override=webhook_url,
+        force_send=True,
+        skip_alert_tracking=True,
+    )
+    if sent:
+        return jsonify({
+            'success': True,
+            'message': 'Message sent to Slack.',
+        })
+
+    return jsonify({
+        'success': False,
+        'error': 'Failed to send Slack message. Check the webhook URL and server logs.',
+    }), 500
 
 # Validation thresholds for changesets needing review
 # This will be updated from settings on startup and when settings are saved
@@ -3806,6 +3969,20 @@ def save_settings(settings):
         print(f"ERROR: Error saving settings: {e}")
         return False
 
+def get_slack_notification_config():
+    """
+    Whether Slack alerts fire is controlled only by Settings (slack.enabled).
+    When enabled, webhook URL uses the saved URL first, then SLACK_WEBHOOK_URL env.
+    """
+    settings = load_settings()
+    slack_settings = settings.get('slack', {})
+    enabled = bool(slack_settings.get('enabled', False))
+    if not enabled:
+        return False, ''
+
+    webhook_url = (slack_settings.get('webhook_url') or '').strip() or SLACK_WEBHOOK_URL
+    return True, webhook_url
+
 def get_validation_threshold():
     """Get the current validation threshold from settings or environment"""
     settings = load_settings()
@@ -3935,27 +4112,19 @@ VALIDATION_THRESHOLDS['mass_changes_threshold'] = get_validation_threshold()
 print(f"Validation threshold initialized: {VALIDATION_THRESHOLDS['mass_changes_threshold']} total changes")
 
 # Print Slack notifications status on startup
-settings = load_settings()
-slack_settings = settings.get('slack', {})
-slack_enabled_settings = slack_settings.get('enabled', False)
-slack_webhook_settings = slack_settings.get('webhook_url', '')
-slack_enabled_env = SLACK_ALERTS_ENABLED
-slack_webhook_env = SLACK_WEBHOOK_URL
-
-# Check both settings and environment variables
-slack_enabled = slack_enabled_settings or slack_enabled_env
-slack_webhook = slack_webhook_settings or slack_webhook_env
+slack_enabled, slack_webhook = get_slack_notification_config()
+slack_settings = load_settings().get('slack', {})
+slack_webhook_in_settings = (slack_settings.get('webhook_url') or '').strip()
 
 if slack_enabled and slack_webhook:
-    print("Slack Notifications: ENABLED")
-    source = "settings" if slack_webhook_settings else "environment"
+    print("Slack Notifications: ENABLED (Settings)")
+    source = "settings" if slack_webhook_in_settings else "environment fallback"
     print(f"   Webhook URL configured ({source}): {slack_webhook[:30]}...")
 elif slack_enabled and not slack_webhook:
-    print("Slack Notifications: ENABLED but no webhook URL configured")
-    print("   Configure webhook URL in Settings page or set SLACK_WEBHOOK_URL environment variable")
+    print("Slack Notifications: ENABLED in Settings but no webhook URL configured")
+    print("   Add a webhook URL in Settings or set SLACK_WEBHOOK_URL on the server")
 else:
-    print("Slack Notifications: DISABLED")
-    print("   Enable in Settings page or set SLACK_ALERTS_ENABLED=true environment variable")
+    print("Slack Notifications: DISABLED (enable in Settings)")
 
 # Initialize data files on startup
 initialize_data_files()
