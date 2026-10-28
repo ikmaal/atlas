@@ -1199,6 +1199,16 @@ def get_validation_criteria():
         'access': criteria.get('access', True)
     }
 
+def grabsg_mappers_excluded_from_review():
+    """
+    When True (default), changesets from users with 'GrabSG' in the OSM username skip review rules.
+    When False, GrabSG mappers are validated like any other user.
+    """
+    settings = load_settings()
+    validation = settings.get('validation', {})
+    include_grabsg = validation.get('include_grabsg_in_review', False)
+    return not include_grabsg
+
 def validate_changeset(changeset):
     """
     Validate a changeset to detect patterns needing review
@@ -1211,9 +1221,7 @@ def validate_changeset(changeset):
     }
     
     user = changeset.get('user', '')
-    # Exclude changesets from usernames containing "GrabSG"
-    if user and 'GrabSG' in user:
-        # Return early with valid status - no review needed
+    if grabsg_mappers_excluded_from_review() and user and 'GrabSG' in user:
         return validation
     
     # Get enabled criteria from settings
@@ -3932,6 +3940,7 @@ def load_settings():
     default_settings = {
         'validation': {
             'mass_changes_threshold': 50,
+            'include_grabsg_in_review': False,
             'criteria': {
                 'mass_changes': True,
                 'erp': True,
@@ -4030,6 +4039,10 @@ def save_settings_endpoint():
                 except (ValueError, TypeError):
                     return jsonify({'error': 'Invalid mass changes threshold value'}), 400
             
+            include_grabsg = data['validation'].get('include_grabsg_in_review')
+            if include_grabsg is not None and not isinstance(include_grabsg, bool):
+                return jsonify({'error': 'include_grabsg_in_review must be a boolean value'}), 400
+
             # Validate criteria settings
             if 'criteria' in data['validation']:
                 criteria = data['validation']['criteria']

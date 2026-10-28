@@ -575,8 +575,23 @@
                                                     <label class="settings-label">
                                                         Enable or disable specific criteria for flagging changesets as "Needs Review"
                                                     </label>
+
+                                                    <div class="settings-criterion-item" style="margin-top: 12px;">
+                                                        <div class="settings-toggle-wrapper">
+                                                            <label class="settings-toggle-label" for="includeGrabsgInReview">
+                                                                <span class="settings-toggle-text">
+                                                                    <strong>Include GrabSG mappers in review</strong>
+                                                                    <span class="settings-toggle-description">When on, changesets from OSM users with GrabSG in their username are checked against the criteria below. When off, those changesets are always treated as valid.</span>
+                                                                </span>
+                                                                <div class="settings-toggle">
+                                                                    <input type="checkbox" id="includeGrabsgInReview" class="settings-toggle-input">
+                                                                    <span class="settings-toggle-slider"></span>
+                                                                </div>
+                                                            </label>
+                                                        </div>
+                                                    </div>
                                                     
-                                                    <div class="settings-criteria-list" style="display: flex; flex-direction: column; gap: 16px; margin-top: 12px;">
+                                                    <div class="settings-criteria-list" style="display: flex; flex-direction: column; gap: 16px; margin-top: 16px;">
                                                         <!-- Mass Changes Criterion -->
                                                         <div class="settings-criterion-item">
                                                             <div class="settings-toggle-wrapper">

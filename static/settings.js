@@ -3,6 +3,7 @@
 let currentSettings = {
     validation: {
         mass_changes_threshold: 50,
+        include_grabsg_in_review: false,
         criteria: {
             mass_changes: true,
             erp: true,
@@ -39,6 +40,11 @@ function populateSettingsForm(settings) {
     if (thresholdInput && settings.validation) {
         // Support both old and new setting names for backward compatibility
         thresholdInput.value = settings.validation.mass_changes_threshold || settings.validation.mass_deletion_threshold || 50;
+    }
+
+    const includeGrabsgInReview = document.getElementById('includeGrabsgInReview');
+    if (includeGrabsgInReview && settings.validation) {
+        includeGrabsgInReview.checked = settings.validation.include_grabsg_in_review === true;
     }
 
     // Review criteria toggles
@@ -144,10 +150,12 @@ async function saveSettings() {
     const criterionERP = document.getElementById('criterionERP');
     const criterionOneway = document.getElementById('criterionOneway');
     const criterionAccess = document.getElementById('criterionAccess');
+    const includeGrabsgInReview = document.getElementById('includeGrabsgInReview');
 
     const settings = {
         validation: {
             mass_changes_threshold: parseInt(thresholdInput.value) || 50,
+            include_grabsg_in_review: includeGrabsgInReview ? includeGrabsgInReview.checked : false,
             criteria: {
                 mass_changes: criterionMassChanges ? criterionMassChanges.checked : true,
                 erp: criterionERP ? criterionERP.checked : true,
