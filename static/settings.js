@@ -301,6 +301,63 @@ async function testCriterionSlackNotification(criterion, buttonEl) {
     }
 }
 
+// Send Slack alerts for all changesets currently in needs_review
+async function notifyNeedsReviewSlack() {
+    const testStatus = document.getElementById('slackTestStatus');
+    const slackEnabled = document.getElementById('slackEnabled');
+
+    if (slackEnabled && !slackEnabled.checked) {
+        if (testStatus) {
+            testStatus.textContent = 'Enable Slack notifications and save settings first';
+            testStatus.className = 'settings-test-status error';
+        }
+        return;
+    }
+
+    if (!confirm('Send a Slack message for every changeset in the current list that needs review? This may send multiple messages.')) {
+        return;
+    }
+
+    try {
+        if (testStatus) {
+            testStatus.textContent = 'Fetching changesets and sending alerts…';
+            testStatus.className = 'settings-test-status loading';
+        }
+
+        const response = await fetch('/api/slack/notify-needs-review', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ force: true }),
+        });
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+            if (testStatus) {
+                testStatus.textContent = data.message || `Sent ${data.sent_count || 0} notification(s).`;
+                testStatus.className = 'settings-test-status success';
+            }
+        } else {
+            if (testStatus) {
+                testStatus.textContent = data.error || 'Failed to send notifications';
+                testStatus.className = 'settings-test-status error';
+            }
+        }
+
+        setTimeout(() => {
+            if (testStatus) {
+                testStatus.textContent = '';
+                testStatus.className = 'settings-test-status';
+            }
+        }, 8000);
+    } catch (error) {
+        console.error('Error sending needs-review Slack alerts:', error);
+        if (testStatus) {
+            testStatus.textContent = 'Error: Could not reach the server';
+            testStatus.className = 'settings-test-status error';
+        }
+    }
+}
+
 // Test Slack notification
 async function testSlackNotification() {
     const testStatus = document.getElementById('slackTestStatus');
@@ -438,6 +495,11 @@ function initSettingsPage() {
         const testBtn = document.getElementById('testSlackNotification');
         if (testBtn) {
             testBtn.addEventListener('click', testSlackNotification);
+        }
+
+        const notifyNeedsReviewBtn = document.getElementById('notifyNeedsReviewSlack');
+        if (notifyNeedsReviewBtn) {
+            notifyNeedsReviewBtn.addEventListener('click', notifyNeedsReviewSlack);
         }
 
         document.querySelectorAll('.settings-criterion-slack-test').forEach((btn) => {

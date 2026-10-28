@@ -756,16 +756,85 @@ else:
 
 # Slack notifications status will be printed after load_settings() is defined
 
-@app.route('/api/cache/clear')
-def clear_cache():
-    """Clear the changeset details cache"""
+def clear_validation_caches():
+    """Clear in-memory caches so validation and changeset lists reflect current settings."""
     global changeset_details_cache, erp_cache, changeset_xml_cache, _changesets_fetch_cache
-    count = len(changeset_details_cache)
     changeset_details_cache.clear()
     changeset_xml_cache.clear()
     _changesets_fetch_cache.clear()
     erp_cache.clear()
+
+@app.route('/api/cache/clear')
+def clear_cache():
+    """Clear the changeset details cache"""
+    count = len(changeset_details_cache)
+    clear_validation_caches()
     return jsonify({'success': True, 'message': f'Cleared {count} cached changesets'})
+
+@app.route('/api/slack/notify-needs-review', methods=['POST'])
+def notify_needs_review_changesets():
+    """
+    Send Slack notifications for all changesets currently marked needs_review in the active window.
+    Re-fetches from OSM with fresh validation. By default re-sends even if previously alerted.
+    """
+    data = request.get_json() or {}
+    region = data.get('region', CURRENT_REGION)
+    force = data.get('force', True)
+
+    if region not in REGIONS:
+        return jsonify({'success': False, 'error': f'Region {region} not found'}), 404
+
+    slack_enabled, webhook_url = get_slack_notification_config()
+    if not slack_enabled:
+        return jsonify({
+            'success': False,
+            'error': 'Slack notifications are disabled. Enable them in Settings and save.',
+        }), 400
+    if not webhook_url:
+        return jsonify({
+            'success': False,
+            'error': 'No Slack webhook URL configured.',
+        }), 400
+
+    clear_validation_caches()
+    changesets = fetch_osm_changesets(
+        region=region,
+        limit=1000,
+        send_auto_notifications=False,
+    )
+    needs_review = [
+        cs for cs in changesets
+        if cs.get('validation', {}).get('status') == 'needs_review'
+    ]
+
+    sent_ids = []
+    failed_ids = []
+    skipped_ids = []
+
+    for cs in needs_review:
+        cs_id_str = str(cs.get('id'))
+        if not cs_id_str:
+            continue
+        if not force and cs_id_str in alerted_changesets:
+            skipped_ids.append(cs_id_str)
+            continue
+        if force:
+            alerted_changesets.discard(cs_id_str)
+        if send_slack_notification(cs):
+            sent_ids.append(cs_id_str)
+        else:
+            failed_ids.append(cs_id_str)
+
+    return jsonify({
+        'success': True,
+        'region': region,
+        'needs_review_count': len(needs_review),
+        'sent_count': len(sent_ids),
+        'sent': sent_ids,
+        'failed': failed_ids,
+        'skipped': skipped_ids,
+        'message': f'Sent {len(sent_ids)} Slack notification(s) for needs_review changesets.',
+    })
 
 @app.route('/api/test/slack', methods=['POST'])
 def test_slack_notification():
@@ -1369,7 +1438,13 @@ def fetch_changeset_details(changeset_id):
         print(f"Error fetching details for changeset {changeset_id}: {e}")
         return None
 
-def fetch_osm_changesets(bbox=None, limit=200, region=None, time_range_hours=None):
+def fetch_osm_changesets(
+    bbox=None,
+    limit=200,
+    region=None,
+    time_range_hours=None,
+    send_auto_notifications=True,
+):
     """
     Fetch changesets from OpenStreetMap API for a given bounding box.
     Uses optimized parallel fetching for speed.
@@ -1379,6 +1454,7 @@ def fetch_osm_changesets(bbox=None, limit=200, region=None, time_range_hours=Non
         limit: Maximum number of changesets to return
         region: Region ID to filter by (defaults to current region)
         time_range_hours: Hours to look back (defaults to CHANGESET_TIME_RANGE_HOURS, use None for all history)
+        send_auto_notifications: When False, skip Slack/Sheets side effects during fetch
     """
     # Use provided region, or fall back to current region
     region = region or CURRENT_REGION
@@ -1601,6 +1677,15 @@ def fetch_osm_changesets(bbox=None, limit=200, region=None, time_range_hours=Non
                     cs['tags']['deleted_count'] = str(total_deleted)
                     print(f"Added mass_changes tag to changeset {cs.get('id')} ({total_changes} total changes: {total_created} created, {total_modified} modified, {total_deleted} deleted)")
         
+        if not send_auto_notifications:
+            total_time = time.time() - start_time_overall
+            print(f"SUCCESS: Loaded {len(changesets)} changesets successfully in {total_time:.1f}s (auto-notifications skipped)")
+            _changesets_fetch_cache[cache_key] = {
+                'fetched_at': time.time(),
+                'changesets': changesets
+            }
+            return changesets
+
         # Check if this is the initial load (no previously alerted changesets)
         initial_load = len(alerted_changesets) == 0
         
@@ -4090,6 +4175,7 @@ def save_settings_endpoint():
 
         # Save settings
         if save_settings(current_settings):
+            clear_validation_caches()
             # Update runtime validation threshold
             global VALIDATION_THRESHOLDS
             VALIDATION_THRESHOLDS['mass_changes_threshold'] = get_validation_threshold()
