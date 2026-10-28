@@ -763,13 +763,17 @@ def clear_validation_caches():
     changeset_xml_cache.clear()
     _changesets_fetch_cache.clear()
     erp_cache.clear()
+    try:
+        cache.clear()
+    except Exception as e:
+        print(f"WARNING: Could not clear filesystem comparison cache: {e}")
 
 @app.route('/api/cache/clear')
 def clear_cache():
     """Clear the changeset details cache"""
     count = len(changeset_details_cache)
     clear_validation_caches()
-    return jsonify({'success': True, 'message': f'Cleared {count} cached changesets'})
+    return jsonify({'success': True, 'message': f'Cleared {count} cached changesets and comparison cache'})
 
 @app.route('/api/slack/notify-needs-review', methods=['POST'])
 def notify_needs_review_changesets():
@@ -1391,6 +1395,42 @@ def is_routing_element(elem_or_dict):
         return False
     return False
 
+def is_comparison_element(elem_or_dict):
+    """
+    Elements to include in the before/after comparison UI.
+    Includes routable ways plus routing-related nodes (ERP gantries, highway-tagged nodes).
+    """
+    if is_routing_element(elem_or_dict):
+        return True
+
+    excluded_highway_values = {'footway', 'path', 'pedestrian', 'steps', 'bridleway', 'cycleway'}
+
+    if hasattr(elem_or_dict, 'tag'):
+        if elem_or_dict.tag != 'node':
+            return False
+        tags = {}
+        for tag in elem_or_dict.findall('tag'):
+            tags[tag.get('k')] = tag.get('v')
+        if tags.get('name') == 'ERP':
+            return True
+        highway = str(tags.get('highway', '')).lower()
+        if highway and highway not in excluded_highway_values:
+            return True
+        return False
+
+    if isinstance(elem_or_dict, dict):
+        if elem_or_dict.get('type') != 'node':
+            return False
+        tags = elem_or_dict.get('tags', {})
+        if tags.get('name') == 'ERP':
+            return True
+        highway = str(tags.get('highway', '')).lower()
+        if highway and highway not in excluded_highway_values:
+            return True
+        return False
+
+    return False
+
 def fetch_changeset_details(changeset_id):
     """
     Fetch detailed statistics for a specific changeset
@@ -1890,7 +1930,7 @@ def debug_changeset(changeset_id):
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/changeset/<changeset_id>/comparison')
-@cache.cached(timeout=3600, key_prefix='comparison_%s')
+@cache.cached(timeout=3600, key_prefix='comparison_v2_%s')
 def get_changeset_comparison(changeset_id):
     """
     Fetch detailed before/after comparison for a changeset
@@ -1929,7 +1969,7 @@ def get_changeset_comparison(changeset_id):
         for create_elem in root.findall('create'):
             for elem in create_elem:
                 # Only process roads (ways with highway tag)
-                if not is_routing_element(elem):
+                if not is_comparison_element(elem):
                     continue
                     
                 created_item = parse_osm_element(elem, 'created')
@@ -1957,7 +1997,7 @@ def get_changeset_comparison(changeset_id):
         for modify_elem in root.findall('modify'):
             for elem in modify_elem:
                 # Only process roads (ways with highway tag)
-                if not is_routing_element(elem):
+                if not is_comparison_element(elem):
                     continue
                     
                 modified_item = parse_osm_element(elem, 'modified')
@@ -2065,7 +2105,7 @@ def get_changeset_comparison(changeset_id):
         for delete_elem in root.findall('delete'):
             for elem in delete_elem:
                 # Only process roads (ways with highway tag)
-                if not is_routing_element(elem):
+                if not is_comparison_element(elem):
                     continue
                     
                 deleted_item = parse_osm_element(elem, 'deleted')
@@ -3389,7 +3429,7 @@ I'll show you the **side-by-side before and after** changes with interactive map
                 shown = 0
                 for elem in create_elem:
                     # Only process routing elements (roads)
-                    if not is_routing_element(elem):
+                    if not is_comparison_element(elem):
                         continue
                         
                     if shown >= 5:  # Limit to first 5
@@ -3419,7 +3459,7 @@ I'll show you the **side-by-side before and after** changes with interactive map
                 shown = 0
                 for elem in modify_elem:
                     # Only process routing elements (roads)
-                    if not is_routing_element(elem):
+                    if not is_comparison_element(elem):
                         continue
                         
                     if shown >= 3:  # Limit to first 3 for detailed view
@@ -3508,7 +3548,7 @@ I'll show you the **side-by-side before and after** changes with interactive map
                 shown = 0
                 for elem in delete_elem:
                     # Only process routing elements (roads)
-                    if not is_routing_element(elem):
+                    if not is_comparison_element(elem):
                         continue
                         
                     if shown >= 5:  # Limit to first 5
